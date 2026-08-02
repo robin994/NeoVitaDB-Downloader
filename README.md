@@ -1,5 +1,5 @@
-# VitaDB Downloader
-VitaDB Downloader is the official PSVita/PSTV client for [VitaDB](https://www.rinnegatamante.eu/vitadb), the first database ever made for PSVITA/PSTV homebrew.
+# NeoVitaDB Downloader
+NeoVitaDB Downloader is a PSVita/PSTV homebrew client, a fork of Rinnegatamante's VitaDB Downloader. It was created after the original VitaDB backend at rinnegatamante.eu shut down, and now runs on [NeoVitaDB-Catalog](https://github.com/robin994/NeoVitaDB-Catalog), a static catalog of PSVITA/PSTV homebrew hosted on GitHub Pages.
 
 ## Features
 - Searching by author/homebrew name.
@@ -12,9 +12,9 @@ VitaDB Downloader is the official PSVita/PSTV client for [VitaDB](https://www.ri
 - Fast boot time (Only the very first boot will take a bit more due to app icons download. Successive boots will be basically instant)
 - Low storage usage (Screenshots are served on demand, the only data that are kept on storage are app icons with a complessive storage usage lower than 10 MBs).
 - Tracking of installed apps and of their state (outdated/updated) even when not installed through VitaDB Downloader.
-- Background music (You can customize it by changing `ux0:data/VitaDB/bg.ogg` with your own preferred track).
-- Background image/video (You can customize it by `changing ux0:data/VitaDB/bg.mp4` or `ux0:data/VitaDB/bg.png`).
-- Support for themes (Customization of GUI elements via `ux0:data/VitaDB/themes.ini`) with built-in downloader and manager.
+- Background music (You can customize it by changing `ux0:data/NeoVitaDB/bg.ogg` with your own preferred track).
+- Background image/video (You can customize it by `changing ux0:data/NeoVitaDB/bg.mp4` or `ux0:data/NeoVitaDB/bg.png`).
+- Support for themes (Customization of GUI elements via `ux0:data/NeoVitaDB/themes.ini`) with built-in downloader and manager.
 - Support for PSP homebrews.
 - Daemon support for homebrews update check in background during normal console usage.
 
@@ -27,9 +27,33 @@ Those themes can also be accessed in the app itself by pressing L. While in Them
 ## Homebrew Updater Daemon
 Starting with v.1.7, VitaDB Downloader features an optional daemon that allows to check for all your installed homebrews updates in background. When console is booted and every hour after the first boot, updates will be searched and, if found, notifications will be fired to notify the user of its existence.
 By default, a couple of homebrews are blacklisted from this process either cause they are nightly builds (for which it's not reliable to checksum the hash on server side to perform the update veerification) or cause the Title ID of the app is being used by two or more applications (making impossible to perform an update check).
-It's also possible to add more blacklisted homebrews (for example, if you use a modded build which would be tagged as outdated by VitaDB Downloader). To do so, create the file `ux0:data/VitaDB/daemon_blacklist.txt` and add inside it a list of Title ID of the homebrews you want to blacklist in this format `ABCD12345;ABCD12346;ABCD12347`.
+It's also possible to add more blacklisted homebrews (for example, if you use a modded build which would be tagged as outdated by VitaDB Downloader). To do so, create the file `ux0:data/NeoVitaDB/daemon_blacklist.txt` and add inside it a list of Title ID of the homebrews you want to blacklist in this format `ABCD12345;ABCD12346;ABCD12347`.
 
 ## Changelog
+
+### v.2.6
+This is the first release under the new NeoVitaDB name, after the original rinnegatamante.eu
+backend that VitaDB Downloader relied on shut down.
+- Forked as NeoVitaDB Downloader and migrated to a new backend: application lists, icons,
+  screenshots, trophies, themes and bootstrap files (SharkF00D, kubridge, PSM Runtime) are now
+  served from a static catalog (NeoVitaDB-Catalog) hosted on GitHub Pages instead of the old PHP
+  backend.
+- App download URLs are now provided directly by the catalog instead of being resolved through a
+  redirect endpoint on the old backend.
+- Renamed the on-device data folder from `ux0:data/VitaDB` to `ux0:data/NeoVitaDB`.
+- Updated LiveArea artwork for the NeoVitaDB rebrand.
+- Added "Trusted Apps"/"Not Trusted Apps" filters for both Vita and PSP homebrews.
+- Fixed a bug that could corrupt the newlib heap and crash the app when downloading a large batch
+  of missing icons at boot.
+- Fixed a bug causing an icon to be wrongly marked as downloaded when its download actually failed.
+- Fixed a crash when the apps list is empty.
+- Fixed downloads hanging indefinitely on a stalled connection with no way to cancel.
+- Fixed a memory leak on every retried download.
+- Fixed a data race between overlapping download threads.
+- Fixed the apps/PSP apps list being silently discarded if the server response was smaller than
+  expected.
+- Fixed a potential crash on first boot on systems without an existing `tai/config.txt` (e.g.
+  Vita3K).
 
 ### v.2.5
 - Added a Crank icon nearby apps using AI.
@@ -168,7 +192,7 @@ It's also possible to add more blacklisted homebrews (for example, if you use a 
 - Fixed a bug causing wrong icon to be shown when performing a search and moving to the first app of the list.
 - Fixed a bug causing app info to be shown also when cursor is not on an app.
 - Added requirements popup when attempting to install an app having extra requirements for a proper setup (Eg. Plugin requirements or full data files from original game).
-- Added possibility to customize color scheme for all GUI elements (ux0:data/VitaDB/themes.ini).
+- Added possibility to customize color scheme for all GUI elements (ux0:data/NeoVitaDB/themes.ini).
 - Added proper tracking of applications state (Not Installed, Outdated, Updated).
 - Speeded up boot time. Now VitaDB Downloader will launch approximately one second faster.
 - Added possibility to check changelog for the selected app by pressing Select button.
@@ -186,7 +210,7 @@ It's also possible to add more blacklisted homebrews (for example, if you use a 
 - Using different granularity (B, KB, MB, GB) for homebrew sizes depending on the size itself.
 - Added free and total storage info on bottom right of the screen.
 - Aligned to left homebrew names in the apps list.
-- Added support for backgrounds (Both static (ux0:data/VitaDB/bg.png) and animated (ux0:data/VitaDB/bg.mp4)).
+- Added support for backgrounds (Both static (ux0:data/NeoVitaDB/bg.png) and animated (ux0:data/NeoVitaDB/bg.mp4)).
 - Added a check prior downloading an app wether free storage is enough to install it.
 
 ### v.1.2
@@ -203,7 +227,7 @@ It's also possible to add more blacklisted homebrews (for example, if you use a 
 - Added possibility to instantly return to the top of the list by pressing Circle (Previously it was Circle + Left).
 - Fixed a bug not making scrollbar instantly reposition when going to the top of the list.
 - Fixed a bug causing selected app icon to get corrupted temporarily after installing an app.
-- Added background music (You can disable it or change the track by removing/replacing ux0:data/VitaDB/bg.ogg)
+- Added background music (You can disable it or change the track by removing/replacing ux0:data/NeoVitaDB/bg.ogg)
 - Fixed a bug causing selected app to change randomly when changing sort mode.
 
 ## Credits

@@ -3,8 +3,9 @@
 #include <string.h>
 #include <libk/stdlib.h>
 #include <libk/stdio.h>
+#include "../source/catalog.h"
 
-#define DB_FILE_NAME "ux0:data/vitadb.json"
+#define DB_FILE_NAME "ux0:data/NeoVitaDB.json"
 #define BUF_SIZE (1152 * 1024)
 #define NET_SIZE (141 * 1024)
 
@@ -169,7 +170,7 @@ void check_updates(const char *file) {
 }
 
 int daemon_thread(SceSize args, void *argp) {
-	SceUID fd = sceIoOpen("ux0:data/VitaDB/daemon_blacklist.txt", SCE_O_RDONLY, 0777);
+	SceUID fd = sceIoOpen("ux0:data/NeoVitaDB/daemon_blacklist.txt", SCE_O_RDONLY, 0777);
 	if (fd > 0) {
 		uint64_t len = sceIoLseek(fd, 0, SCE_SEEK_END);
 		sceIoLseek(fd, 0, SCE_SEEK_SET);
@@ -201,8 +202,8 @@ int daemon_thread(SceSize args, void *argp) {
 	
 	for (;;) {
 		SceUID http_template = sceHttpCreateTemplate("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/58.0.3029.110 Safari/537.36", 2, 1);
-		SceUID conn = sceHttpCreateConnectionWithURL(http_template, "http://www.rinnegatamante.eu/vitadb/list_minimal_hbs_json.php", 0);
-		SceUID req = sceHttpCreateRequestWithURL(conn, 0, "http://www.rinnegatamante.eu/vitadb/list_minimal_hbs_json.php", 0);
+		SceUID conn = sceHttpCreateConnectionWithURL(http_template, CATALOG_VITA_LIST, 0);
+		SceUID req = sceHttpCreateRequestWithURL(conn, 0, CATALOG_VITA_LIST, 0);
 		if (!sceHttpSendRequest(req, NULL, 0)) {
 			fd = sceIoOpen(DB_FILE_NAME, SCE_O_TRUNC | SCE_O_CREAT | SCE_O_WRONLY, 0777);
 			void *buffer = taipool_alloc(BUF_SIZE);

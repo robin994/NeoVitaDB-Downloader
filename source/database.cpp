@@ -25,6 +25,7 @@
 #include <string.h>
 #include <vitasdk.h>
 #include <vitaGL.h>
+#include "catalog.h"
 #include "database.h"
 #include "dialogs.h"
 #include "network.h"
@@ -214,7 +215,7 @@ char *get_changelog(const char *file, char *id) {
 
 bool populate_apps_database(const char *file, bool is_psp) {
 	// Read icons database
-	SceUID f = sceIoOpen("ux0:data/VitaDB/icons.db", SCE_O_RDONLY, 0777);
+	SceUID f = sceIoOpen("ux0:data/NeoVitaDB/icons.db", SCE_O_RDONLY, 0777);
 	//printf("f is %x\n", f);
 	size_t icons_db_size = sceIoRead(f, generic_mem_buffer, MEM_BUFFER_SIZE);
 	//printf("icons_db_size is %x\n", icons_db_size);
@@ -239,7 +240,12 @@ bool populate_apps_database(const char *file, bool is_psp) {
 		sceIoClose(f);
 		buffer[len] = 0;
 		if (!strstr(buffer, "\"name\":")) {
-			return false;
+			// A well formed but empty catalog is not an outage: report success and
+			// let the UI show zero results.
+			bool is_empty_catalog = strstr(buffer, "[]") != nullptr;
+			free(buffer);
+			vglFree(icons_db);
+			return is_empty_catalog;
 		}
 		char *ptr = buffer;
 		char *end, *end2;
@@ -265,7 +271,7 @@ bool populate_apps_database(const char *file, bool is_psp) {
 			ptr = get_value_from_json(node->author, ptr, "author", nullptr);
 			ptr = get_value_from_json(node->type, ptr, "type", nullptr);
 			ptr = get_value_from_json(node->id, ptr, "id", nullptr);
-			if (!strncmp(node->id, "877", 3) && strlen(boot_params) == 0) { // VitaDB Downloader, check if newer than running version
+			if (!strcmp(node->id, SELF_CATALOG_ID) && strlen(boot_params) == 0) { // NeoVitaDB Downloader, check if newer than running version
 				if (strncmp(&version[2], VERSION, 3)) {
 					update_detected = true;
 					to_download = node;
@@ -357,9 +363,11 @@ bool populate_apps_database(const char *file, bool is_psp) {
 			ptr = get_value_from_json(smalldata, ptr, "ai", nullptr);
 			node->ai = atoi(smalldata);
 			ptr = get_value_from_json(node->data_link, ptr, "data", nullptr);
-			if (strlen(node->data_link) > 5 && strstr(node->data_link, "www.rinnegatamante.eu")) { // Redirect to PSARCs any data files hosted on VitaDB webhost
-				strcat(node->data_link, ".psarc");
-			}
+			// The catalog carries the download URL for the release asset, so the app
+			// no longer derives it from the id through a redirect endpoint.
+			ptr = get_value_from_json(node->url, ptr, "url", nullptr);
+			ptr = get_value_from_json(smalldata, ptr, "trusted", nullptr);
+			node->trusted = atoi(smalldata);
 			sprintf(node->name, "%s %s", name, version);
 			if (is_psp) {
 				node->next = psp_apps;
@@ -377,7 +385,7 @@ bool populate_apps_database(const char *file, bool is_psp) {
 		
 		if (favorites_old_format) {
 			char is_new = '.';
-			SceUID fd = sceIoOpen("ux0:data/VitaDB/favorites.txt", SCE_O_WRONLY | SCE_O_CREAT | SCE_O_TRUNC, 0777);
+			SceUID fd = sceIoOpen("ux0:data/NeoVitaDB/favorites.txt", SCE_O_WRONLY | SCE_O_CREAT | SCE_O_TRUNC, 0777);
 			sceIoWrite(fd, &is_new, 1);
 			is_new = ';';
 			int i = 1;
@@ -400,30 +408,43 @@ bool populate_apps_database(const char *file, bool is_psp) {
 			sceKernelStartThread(clash_thd, 0, NULL);
 		}
 		
-		// Downloading missing icons
-		if (!update_detected) {
+		// Downloading missing icons. icons.db is opened once for the whole batch
+		// instead of once per icon: bisection on Vita3K showed hundreds of
+		// fopen("a")/fclose cycles on the same file (one per icon, up to 463 in
+		// a fresh install) reliably corrupt the newlib heap after enough of them
+		// land back to back, crashing later inside _malloc_r on an unrelated
+		// allocation. fflush after each entry keeps the same crash-durability
+		// (an interrupted run still has every icon fetched so far on disk)
+		// without repeating the alloc/free of the FILE* itself.
+		if (!update_detected && missing_icons_num > 0) {
+			FILE *icons_db_f = fopen("ux0:data/NeoVitaDB/icons.db", "a");
 			for (int i = 0; i < missing_icons_num; i++) {
 				char download_link[512];
-				sprintf(download_link, "https://www.rinnegatamante.eu/vitadb/icons/%s", missing_icons[i]->icon);
+				sprintf(download_link, CATALOG_ICON_FMT, missing_icons[i]->icon);
 				download_file(download_link, "Downloading missing icons", false, i + 1, missing_icons_num);
-				sprintf(download_link, "ux0:data/VitaDB/icons/%c%c", missing_icons[i]->icon[0], missing_icons[i]->icon[1]);
+				sprintf(download_link, "ux0:data/NeoVitaDB/icons/%c%c", missing_icons[i]->icon[0], missing_icons[i]->icon[1]);
 				sceIoMkdir(download_link, 0777);
-				sprintf(download_link, "ux0:data/VitaDB/icons/%c%c/%s", missing_icons[i]->icon[0], missing_icons[i]->icon[1], missing_icons[i]->icon);
-				sceIoRename(TEMP_DOWNLOAD_NAME, download_link);
-				FILE *f = fopen("ux0:data/VitaDB/icons.db", "a");
-				fprintf(f, "%s\n", download_link);
-				fclose(f);
+				sprintf(download_link, "ux0:data/NeoVitaDB/icons/%c%c/%s", missing_icons[i]->icon[0], missing_icons[i]->icon[1], missing_icons[i]->icon);
+				// Only record the icon as fetched if the file actually landed:
+				// a failed/stalled download leaves no temp.tmp, so the rename
+				// fails too. Recording it unconditionally here (the original
+				// bug) permanently marks a never-downloaded icon as done, since
+				// icons.db is what future runs check to skip re-fetching it.
+				if (sceIoRename(TEMP_DOWNLOAD_NAME, download_link) >= 0) {
+					fprintf(icons_db_f, "%s\n", download_link);
+					fflush(icons_db_f);
+				}
 			}
+			fclose(icons_db_f);
 		}
 	}
 	vglFree(icons_db);
-	//printf("finished parsing\n");
-	return true;
+	return f >= 0;
 }
 
 void populate_daemon_blacklist() {
 	daemon_blacklist.clear();
-	SceUID fd = sceIoOpen("ux0:data/VitaDB/daemon_blacklist.txt", SCE_O_RDONLY, 0777);
+	SceUID fd = sceIoOpen("ux0:data/NeoVitaDB/daemon_blacklist.txt", SCE_O_RDONLY, 0777);
 	if (fd >= 0) {
 		uint64_t len = sceIoLseek(fd, 0, SCE_SEEK_END);
 		sceIoLseek(fd, 0, SCE_SEEK_SET);
@@ -443,7 +464,7 @@ void populate_daemon_blacklist() {
 
 void insert_daemon_blacklist(char *tid) {
 	daemon_blacklist.push_back(tid);
-	SceUID fd = sceIoOpen("ux0:data/VitaDB/daemon_blacklist.txt", SCE_O_WRONLY | SCE_O_CREAT, 0777);
+	SceUID fd = sceIoOpen("ux0:data/NeoVitaDB/daemon_blacklist.txt", SCE_O_WRONLY | SCE_O_CREAT, 0777);
 	uint64_t len = sceIoLseek(fd, 0, SCE_SEEK_END);
 	if (len > 0) {
 		char buffer[12];
@@ -471,19 +492,19 @@ void remove_daemon_blacklist(char *tid) {
 			idx++;
 		}
 		daemon_blacklist.erase(daemon_blacklist.begin() + to_delete);
-		SceUID fd = sceIoOpen("ux0:data/VitaDB/daemon_blacklist.txt", SCE_O_WRONLY | SCE_O_CREAT | SCE_O_TRUNC, 0777);
+		SceUID fd = sceIoOpen("ux0:data/NeoVitaDB/daemon_blacklist.txt", SCE_O_WRONLY | SCE_O_CREAT | SCE_O_TRUNC, 0777);
 		sceIoWrite(fd, buffer, daemon_blacklist.size() * 10 - 1);
 		sceIoClose(fd);
 		free(buffer);
 	} else {
 		daemon_blacklist.clear();
-		sceIoRemove("ux0:data/VitaDB/daemon_blacklist.txt");
+		sceIoRemove("ux0:data/NeoVitaDB/daemon_blacklist.txt");
 	}
 }
 
 void populate_favorites() {
 	favorites.clear();
-	SceUID fd = sceIoOpen("ux0:data/VitaDB/favorites.txt", SCE_O_RDONLY, 0777);
+	SceUID fd = sceIoOpen("ux0:data/NeoVitaDB/favorites.txt", SCE_O_RDONLY, 0777);
 	if (fd >= 0) {
 		char is_old;
 		sceIoRead(fd, &is_old, 1);
@@ -523,7 +544,7 @@ void populate_favorites() {
 
 void insert_favorites(char *tid) {
 	favorites.push_back(tid);
-	SceUID fd = sceIoOpen("ux0:data/VitaDB/favorites.txt", SCE_O_WRONLY | SCE_O_CREAT, 0777);
+	SceUID fd = sceIoOpen("ux0:data/NeoVitaDB/favorites.txt", SCE_O_WRONLY | SCE_O_CREAT, 0777);
 	uint64_t len = sceIoLseek(fd, 0, SCE_SEEK_END);
 	char buffer[12];
 	if (len > 0) {
@@ -555,13 +576,13 @@ void remove_favorites(char *tid) {
 			idx++;
 		}
 		favorites.erase(favorites.begin() + to_delete);
-		SceUID fd = sceIoOpen("ux0:data/VitaDB/favorites.txt", SCE_O_WRONLY | SCE_O_CREAT | SCE_O_TRUNC, 0777);
+		SceUID fd = sceIoOpen("ux0:data/NeoVitaDB/favorites.txt", SCE_O_WRONLY | SCE_O_CREAT | SCE_O_TRUNC, 0777);
 		sceIoWrite(fd, buffer, favorites.size() * 5);
 		sceIoClose(fd);
 		free(buffer);
 	} else {
 		favorites.clear();
-		sceIoRemove("ux0:data/VitaDB/favorites.txt");
+		sceIoRemove("ux0:data/NeoVitaDB/favorites.txt");
 	}
 }
 
@@ -575,11 +596,11 @@ static inline void swap_apps(AppSelection *prev, AppSelection *cur, AppSelection
 void sort_apps_list(AppSelection **start, int sort_idx) {
 	// Ensuring clasher titleids check finished
 	sceKernelWaitThreadEnd(clash_thd, NULL, NULL);
-	//printf("sort_apps_list called\n");
 
-	// Checking for empty list
-	if (start == NULL) 
-		return; 
+	// Checking for empty list. *start is the head: testing start alone is always
+	// false, and an empty catalog would then walk off a null head.
+	if (start == NULL || *start == NULL)
+		return;
 	
 	bool swapped; 
   
@@ -674,7 +695,7 @@ void sort_apps_list(AppSelection **start, int sort_idx) {
 }
 
 void populate_themes_database(const char *file) {
-	sceIoMkdir("ux0:data/VitaDB/themes", 0777);
+	sceIoMkdir("ux0:data/NeoVitaDB/themes", 0777);
 	// Burning on screen the parsing text dialog
 	for (int i = 0; i < 3; i++) {
 		draw_text_dialog("Parsing themes list", true, false);
@@ -699,14 +720,14 @@ void populate_themes_database(const char *file) {
 			if (!ptr)
 				break;
 			ThemeSelection *node = (ThemeSelection*)malloc(sizeof(ThemeSelection));
-			sprintf(fname, "ux0:data/VitaDB/previews/%s.png", name);
+			sprintf(fname, "ux0:data/NeoVitaDB/previews/%s.png", name);
 			if (sceIoGetstat(fname, &st) < 0)
 				missing_previews[missing_previews_num++] = node;
 			node->desc = nullptr;
 			node->shuffle = false;
 			node->search_filtered = false;
 			strcpy(node->name, name);
-			sprintf(fname, "ux0:data/VitaDB/themes/%s/theme.ini", node->name);
+			sprintf(fname, "ux0:data/NeoVitaDB/themes/%s/theme.ini", node->name);
 			
 			if (sceIoGetstat(fname, &st) >= 0)
 				node->state = APP_UPDATED;
@@ -735,7 +756,7 @@ void populate_themes_database(const char *file) {
 			char download_link[512];
 			sprintf(download_link, "https://github.com/CatoTheYounger97/vitaDB_themes/raw/main/previews/%s.png", missing_previews[i]->name);
 			download_file(download_link, "Downloading missing previews", false, i + 1, missing_previews_num);
-			sprintf(download_link, "ux0:data/VitaDB/previews/%s.png", missing_previews[i]->name);
+			sprintf(download_link, "ux0:data/NeoVitaDB/previews/%s.png", missing_previews[i]->name);
 			sceIoRename(TEMP_DOWNLOAD_NAME, download_link);
 		}
 	}
@@ -753,8 +774,8 @@ static inline void swap_themes(ThemeSelection *prev, ThemeSelection *cur, ThemeS
 
 void sort_themes_list(ThemeSelection **start, int sort_idx) {
 	// Checking for empty list
-	if (start == NULL) 
-		return; 
+	if (start == NULL || *start == NULL)
+		return;
 	
 	bool swapped; 
   

@@ -24,6 +24,7 @@
 #include <string.h>
 #include <vitasdk.h>
 #include <vitaGL.h>
+#include "catalog.h"
 #include "dialogs.h"
 #include "network.h"
 
@@ -59,7 +60,10 @@ static size_t write_cb(void *ptr, size_t size, size_t nmemb, void *stream) {
 			return 0;
 		}
 	}
-	if (total_bytes > MEM_BUFFER_SIZE || fh >= 0) {
+	// total_bytes is only an estimate until the headers land, and on retries the
+	// real header callback is swapped out, so it cannot be trusted to keep the
+	// write inside the buffer. Spill to disk as soon as this chunk would not fit.
+	if (total_bytes > MEM_BUFFER_SIZE || downloaded_bytes + nmemb > MEM_BUFFER_SIZE || fh >= 0) {
 		if (fh < 0)
 			fh = sceIoOpen(TEMP_DOWNLOAD_NAME, SCE_O_WRONLY | SCE_O_TRUNC | SCE_O_CREAT, 0777);
 		sceIoWrite(fh, ptr, nmemb);
@@ -181,6 +185,14 @@ static void startDownload(const char *url, time_t timestamp = 0) {
 	curl_easy_setopt(curl_handle, CURLOPT_SSL_VERIFYPEER, 0L);
 	curl_easy_setopt(curl_handle, CURLOPT_SSLVERSION, CURL_SSLVERSION_TLSv1_2);
 	curl_easy_setopt(curl_handle, CURLOPT_CONNECTTIMEOUT, 10L);
+	// CONNECTTIMEOUT only covers establishing the connection: without a limit on
+	// the transfer itself a stalled handshake or a half open socket blocks
+	// curl_easy_perform() forever, and the boot time list download is not
+	// cancelable, so the app freezes with no way out. Abort instead once the
+	// transfer has made no progress at all for a while, which still tolerates the
+	// slow but advancing downloads a console on wifi produces.
+	curl_easy_setopt(curl_handle, CURLOPT_LOW_SPEED_LIMIT, 1L);
+	curl_easy_setopt(curl_handle, CURLOPT_LOW_SPEED_TIME, 30L);
 	curl_easy_setopt(curl_handle, CURLOPT_FOLLOWLOCATION, 1L);
 	curl_easy_setopt(curl_handle, CURLOPT_NOPROGRESS, 1L);
 	if (timestamp > 0) {
@@ -203,6 +215,10 @@ static void startDownload(const char *url, time_t timestamp = 0) {
 	if (res == CURLE_OK) {
 		curl_easy_getinfo(curl_handle, CURLINFO_RESPONSE_CODE, &response_code);
 	}
+	// headerchunk is rebuilt on every call, including retries: a stalled or
+	// failing download used to leak one list per attempt, and the icon
+	// downloader could call this hundreds of times in a row for one file.
+	curl_slist_free_all(headerchunk);
 }
 
 static void startStream(const char *url) {
@@ -214,6 +230,14 @@ static void startStream(const char *url) {
 	curl_easy_setopt(curl_handle, CURLOPT_SSL_VERIFYPEER, 0L);
 	curl_easy_setopt(curl_handle, CURLOPT_SSLVERSION, CURL_SSLVERSION_TLSv1_2);
 	curl_easy_setopt(curl_handle, CURLOPT_CONNECTTIMEOUT, 10L);
+	// CONNECTTIMEOUT only covers establishing the connection: without a limit on
+	// the transfer itself a stalled handshake or a half open socket blocks
+	// curl_easy_perform() forever, and the boot time list download is not
+	// cancelable, so the app freezes with no way out. Abort instead once the
+	// transfer has made no progress at all for a while, which still tolerates the
+	// slow but advancing downloads a console on wifi produces.
+	curl_easy_setopt(curl_handle, CURLOPT_LOW_SPEED_LIMIT, 1L);
+	curl_easy_setopt(curl_handle, CURLOPT_LOW_SPEED_TIME, 30L);
 	curl_easy_setopt(curl_handle, CURLOPT_FOLLOWLOCATION, 1L);
 	curl_easy_setopt(curl_handle, CURLOPT_NOPROGRESS, 1L);
 	curl_easy_setopt(curl_handle, CURLOPT_WRITEFUNCTION, write_video_cb);
@@ -229,6 +253,7 @@ static void startStream(const char *url) {
 	headerchunk = curl_slist_append(headerchunk, "Content-Length: 0");
 	curl_easy_setopt(curl_handle, CURLOPT_HTTPHEADER, headerchunk);
 	curl_easy_perform(curl_handle);
+	curl_slist_free_all(headerchunk);
 }
 
 int appListThread(unsigned int args, void *arg) {
@@ -241,9 +266,9 @@ int appListThread(unsigned int args, void *arg) {
 	time_t timestamp = 0;
 
 	SceIoStat stat;
-	if (sceIoGetstat("ux0:data/VitaDB/apps.json", &stat) >= 0) {
+	if (sceIoGetstat("ux0:data/NeoVitaDB/apps.json", &stat) >= 0) {
 		total_bytes = stat.st_size;
-		SceUID fh2 = sceIoOpen("ux0:data/VitaDB/apps.stamp", SCE_O_RDONLY, 0777);
+		SceUID fh2 = sceIoOpen("ux0:data/NeoVitaDB/apps.stamp", SCE_O_RDONLY, 0777);
 		if (fh2 > 0) {
 			sceIoRead(fh2, &timestamp, sizeof(time_t));
 			sceIoClose(fh2);
@@ -252,15 +277,20 @@ int appListThread(unsigned int args, void *arg) {
 		total_bytes = 12 * 1024;
 	}
 
-	while (downloaded_bytes < total_bytes && response_code != 304) {
-		startDownload("https://www.rinnegatamante.eu/vitadb/list_hbs_json.php", timestamp);
+	// Bounded: a server that never delivers used to spin here forever.
+	int attempts = 0;
+	while (downloaded_bytes < total_bytes && response_code != 304 && attempts < 10) {
+		startDownload(CATALOG_VITA_LIST, timestamp);
+		attempts++;
 	}
 
-	if (downloaded_bytes > 12 * 1024 && response_code != 304) {
-		fh = sceIoOpen("ux0:data/VitaDB/apps.json", SCE_O_WRONLY | SCE_O_TRUNC | SCE_O_CREAT, 0777);
+	// Store whatever completed successfully. The old size threshold assumed a
+	// catalog of at least 12 KB and silently discarded smaller ones.
+	if (downloaded_bytes > 0 && (response_code == 200 || response_code == 206)) {
+		fh = sceIoOpen("ux0:data/NeoVitaDB/apps.json", SCE_O_WRONLY | SCE_O_TRUNC | SCE_O_CREAT, 0777);
 		sceIoWrite(fh, generic_mem_buffer, downloaded_bytes);
 		sceIoClose(fh);
-		fh = sceIoOpen("ux0:data/VitaDB/apps.stamp", SCE_O_WRONLY | SCE_O_TRUNC | SCE_O_CREAT, 0777);
+		fh = sceIoOpen("ux0:data/NeoVitaDB/apps.stamp", SCE_O_WRONLY | SCE_O_TRUNC | SCE_O_CREAT, 0777);
 		sceIoWrite(fh, &download_tstamp, sizeof(time_t));
 		sceIoClose(fh);
 	}
@@ -279,9 +309,9 @@ int appPspListThread(unsigned int args, void *arg) {
 	time_t timestamp = 0;
 
 	SceIoStat stat;
-	if (sceIoGetstat("ux0:data/VitaDB/psp_apps.json", &stat) >= 0) {
+	if (sceIoGetstat("ux0:data/NeoVitaDB/psp_apps.json", &stat) >= 0) {
 		total_bytes = stat.st_size;
-		SceUID fh2 = sceIoOpen("ux0:data/VitaDB/psp_apps.stamp", SCE_O_RDONLY, 0777);
+		SceUID fh2 = sceIoOpen("ux0:data/NeoVitaDB/psp_apps.stamp", SCE_O_RDONLY, 0777);
 		if (fh2 > 0) {
 			sceIoRead(fh2, &timestamp, sizeof(time_t));
 			sceIoClose(fh2);
@@ -290,15 +320,20 @@ int appPspListThread(unsigned int args, void *arg) {
 		total_bytes = 12 * 1024;
 	}
 
-	while (downloaded_bytes < total_bytes && response_code != 304) {
-		startDownload("https://www.rinnegatamante.eu/vitadb/list_psp_hbs_json.php", timestamp);
+	// Bounded: a server that never delivers used to spin here forever.
+	int attempts = 0;
+	while (downloaded_bytes < total_bytes && response_code != 304 && attempts < 10) {
+		startDownload(CATALOG_PSP_LIST, timestamp);
+		attempts++;
 	}
 
-	if (downloaded_bytes > 12 * 1024 && response_code != 304) {
-		fh = sceIoOpen("ux0:data/VitaDB/psp_apps.json", SCE_O_WRONLY | SCE_O_TRUNC | SCE_O_CREAT, 0777);
+	// Store whatever completed successfully. The old size threshold assumed a
+	// catalog of at least 12 KB and silently discarded smaller ones.
+	if (downloaded_bytes > 0 && (response_code == 200 || response_code == 206)) {
+		fh = sceIoOpen("ux0:data/NeoVitaDB/psp_apps.json", SCE_O_WRONLY | SCE_O_TRUNC | SCE_O_CREAT, 0777);
 		sceIoWrite(fh, generic_mem_buffer, downloaded_bytes);
 		sceIoClose(fh);
-		fh = sceIoOpen("ux0:data/VitaDB/psp_apps.stamp", SCE_O_WRONLY | SCE_O_TRUNC | SCE_O_CREAT, 0777);
+		fh = sceIoOpen("ux0:data/NeoVitaDB/psp_apps.stamp", SCE_O_WRONLY | SCE_O_TRUNC | SCE_O_CREAT, 0777);
 		sceIoWrite(fh, &download_tstamp, sizeof(time_t));
 		sceIoClose(fh);
 	}
@@ -328,8 +363,12 @@ int downloadMemThread(unsigned int args, void *arg) {
 	downloaded_bytes = 0;
 	total_bytes = 20;
 	startDownload(final_url);
-	while (downloaded_bytes < total_bytes) {
+	// Bounded: a server that never delivers used to spin here forever, retrying
+	// with no cap and leaking a header list on every attempt (see startDownload).
+	int attempts = 0;
+	while (downloaded_bytes < total_bytes && attempts < 10) {
 		startDownload(final_url);
+		attempts++;
 	}
 	downloaded_bytes = total_bytes;
 	generic_mem_buffer[downloaded_bytes] = 0;
@@ -361,11 +400,16 @@ int streamMemThread(unsigned int args, void *arg) {
 	video_decoder_idx = 0;
 	total_bytes = 20;
 	startStream(final_url);
-	while (downloaded_bytes < total_bytes) {
+	// Bounded: see downloadMemThread above for why this cannot retry forever.
+	{
+	int attempts = 0;
+	while (downloaded_bytes < total_bytes && attempts < 10) {
 		if (is_canceled) {
 			goto ABORT_DOWNLOAD;
 		}
 		startStream(final_url);
+		attempts++;
+	}
 	}
 ABORT_DOWNLOAD:
 	downloaded_bytes = total_bytes;
@@ -394,11 +438,17 @@ int downloadThread(unsigned int args, void *arg) {
 	downloaded_bytes = 0;
 	total_bytes = 180;
 	startDownload(final_url);
-	while (downloaded_bytes < total_bytes) {
+	// Bounded: this runs once per file (every missing icon, every vpk, every
+	// theme asset), not cancelable during boot-time icon downloads, so a single
+	// unreachable URL used to spin here forever, retrying with no cap and
+	// leaking a header list on every attempt (see startDownload).
+	int attempts = 0;
+	while (downloaded_bytes < total_bytes && attempts < 10) {
 		if (is_cancelable && is_canceled) {
 			goto ABORT_DOWNLOAD;
 		}
 		startDownload(final_url);
+		attempts++;
 	}
 	if (downloaded_bytes > 180 && total_bytes <= MEM_BUFFER_SIZE) {
 		fh = sceIoOpen(TEMP_DOWNLOAD_NAME, SCE_O_WRONLY | SCE_O_TRUNC | SCE_O_CREAT, 0777);
@@ -426,6 +476,14 @@ bool download_file(char *url, char *text, bool cancelable, int custom_index, int
 		draw_downloader_dialog(pass_idx, downloaded_bytes, total_bytes, text, num_passes, true, bg_tex);
 		res = sceKernelGetThreadInfo(thd, &info);
 	} while (info.status <= SCE_THREAD_DORMANT && res >= 0);
+	// sceKernelGetThreadInfo reporting DORMANT is not the same guarantee as the
+	// thread having actually finished: under load, several "Generic Downloader"
+	// threads have been observed alive at once, all touching the same globals
+	// (curl_handle, downloaded_bytes, generic_url...) with no locking between
+	// them - a real data race. sceKernelWaitThreadEnd is the primitive already
+	// used elsewhere in this codebase (clash_thd) to join a thread reliably;
+	// use it here too before letting the caller start the next download.
+	sceKernelWaitThreadEnd(thd, NULL, NULL);
 	
 	if (is_cancelable) {
 		return !is_canceled;
@@ -446,6 +504,14 @@ void silent_download(char *url) {
 	do {
 		res = sceKernelGetThreadInfo(thd, &info);
 	} while (info.status <= SCE_THREAD_DORMANT && res >= 0);
+	// sceKernelGetThreadInfo reporting DORMANT is not the same guarantee as the
+	// thread having actually finished: under load, several "Generic Downloader"
+	// threads have been observed alive at once, all touching the same globals
+	// (curl_handle, downloaded_bytes, generic_url...) with no locking between
+	// them - a real data race. sceKernelWaitThreadEnd is the primitive already
+	// used elsewhere in this codebase (clash_thd) to join a thread reliably;
+	// use it here too before letting the caller start the next download.
+	sceKernelWaitThreadEnd(thd, NULL, NULL);
 }
 
 void early_download_file(char *url, char *text) {
@@ -464,6 +530,14 @@ void early_download_file(char *url, char *text) {
 		vglSwapBuffers(GL_TRUE);
 		res = sceKernelGetThreadInfo(thd, &info);
 	} while (info.status <= SCE_THREAD_DORMANT && res >= 0);
+	// sceKernelGetThreadInfo reporting DORMANT is not the same guarantee as the
+	// thread having actually finished: under load, several "Generic Downloader"
+	// threads have been observed alive at once, all touching the same globals
+	// (curl_handle, downloaded_bytes, generic_url...) with no locking between
+	// them - a real data race. sceKernelWaitThreadEnd is the primitive already
+	// used elsewhere in this codebase (clash_thd) to join a thread reliably;
+	// use it here too before letting the caller start the next download.
+	sceKernelWaitThreadEnd(thd, NULL, NULL);
 	sceMsgDialogClose();
 	int status = sceMsgDialogGetStatus();
 	do {

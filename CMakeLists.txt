@@ -10,8 +10,8 @@ endif()
 
 project(VitaDB C CXX)
 include("${VITASDK}/share/vita.cmake" REQUIRED)
-set(VITA_APP_NAME "VitaDB Downloader")
-set(VITA_TITLEID	"VITADBDLD")
+set(VITA_APP_NAME "NeoVitaDB Downloader")
+set(VITA_TITLEID	"NEOVITADB")
 set(VITA_VERSION	"01.00")
 
 execute_process(COMMAND git describe --abbrev=6 --dirty --always
@@ -63,6 +63,10 @@ target_link_libraries(VitaDB
 	modplug
 	FLAC
 	crypto
+	opusfile
+	opus
+	xmp
+	zstd
 	taihen_stub
 	kubridge_stub
 	SceAvPlayer_stub

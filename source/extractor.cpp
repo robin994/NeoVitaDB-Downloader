@@ -178,7 +178,7 @@ bool extract_zip_file(char *file, char *dir, bool indexing, bool cancelable) {
 	unzGoToFirstFile(zipfile);
 	FILE *f2;
 	if (indexing)
-		f2 = fopen("ux0:data/VitaDB/icons.db", "w");
+		f2 = fopen("ux0:data/NeoVitaDB/icons.db", "w");
 	for (int zip_idx = 0; zip_idx < num_files; ++zip_idx) {
 		unzGetCurrentFileInfo(zipfile, &file_info, fname, 512, NULL, 0, NULL, 0);
 		if (indexing) {

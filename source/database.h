@@ -89,9 +89,11 @@ struct AppSelection {
 	char aux_hash[34];
 	char *requirements;
 	char data_link[128];
+	char url[256];
 	int state;
 	bool trophies;
 	bool ai;
+	bool trusted;
 	bool favorites;
 	bool search_filtered;
 	uint8_t blacklisted;
