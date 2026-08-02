@@ -1,6 +1,15 @@
 # NeoVitaDB Downloader
 NeoVitaDB Downloader is a PSVita/PSTV homebrew client, a fork of Rinnegatamante's VitaDB Downloader. It was created after the original VitaDB backend at rinnegatamante.eu shut down, and now runs on [NeoVitaDB-Catalog](https://github.com/robin994/NeoVitaDB-Catalog), a static catalog of PSVITA/PSTV homebrew hosted on GitHub Pages.
 
+## Installation
+1. Download the latest `.vpk` from the [Releases page](https://github.com/robin994/NeoVitaDB-Downloader/releases).
+2. Get the `.vpk` onto your Vita's storage. A couple of common ways to do this with [VitaShell](https://github.com/TheOfficialFloW/VitaShell):
+   - **FTP** — In VitaShell, press Select to start the FTP server (it will show an IP and port). From your PC: `curl -T NeoVitaDB-Downloader.vpk ftp://<vita-ip>:1337/ux0:/`.
+   - **USB** — In VitaShell, press Select to enable USB mode, then copy the file over like a regular USB drive.
+   - **On-device browser** — If your Vita has internet access, you can download the `.vpk` directly from the Releases page using VitaShell's built-in browser.
+3. In VitaShell, navigate to where you placed the `.vpk` and press X to install it.
+4. Launch NeoVitaDB Downloader from LiveArea. On first boot it needs an internet connection: it will automatically fetch and set up `libshacccg.suprx` (runtime shader compiler) and `kubridge.skprx` if they're missing, then download the initial app list and icons — this first boot takes noticeably longer than later ones.
+
 ## Features
 - Searching by author/homebrew name.
 - Filtering apps by category.
