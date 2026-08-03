@@ -4,7 +4,7 @@ NeoVitaDB Downloader is a PSVita/PSTV homebrew client, a fork of Rinnegatamante'
 ## Installation
 1. Download the latest `.vpk` from the [Releases page](https://github.com/robin994/NeoVitaDB-Downloader/releases).
 2. Get the `.vpk` onto your Vita's storage. A couple of common ways to do this with [VitaShell](https://github.com/TheOfficialFloW/VitaShell):
-   - **FTP** — In VitaShell, press Select to start the FTP server (it will show an IP and port). From your PC: `curl -T NeoVitaDB-Downloader.vpk ftp://<vita-ip>:1337/ux0:/`.
+   - **FTP** — In VitaShell, press Select to start the FTP server (it will show an IP and port). From your PC: `curl -T NeoVitaDB.vpk ftp://<vita-ip>:1337/ux0:/`.
    - **USB** — In VitaShell, press Select to enable USB mode, then copy the file over like a regular USB drive.
    - **On-device browser** — If your Vita has internet access, you can download the `.vpk` directly from the Releases page using VitaShell's built-in browser.
 3. In VitaShell, navigate to where you placed the `.vpk` and press X to install it.
