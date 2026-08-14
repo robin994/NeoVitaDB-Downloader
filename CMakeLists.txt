@@ -173,5 +173,6 @@ vita_create_vpk(NeoVitaDB.vpk ${VITA_TITLEID} eboot.bin
 		${CMAKE_SOURCE_DIR}/trophy.png trophy.png
 		${CMAKE_SOURCE_DIR}/star.png star.png
 		${CMAKE_SOURCE_DIR}/crank.png crank.png
+		${CMAKE_SOURCE_DIR}/slop.png slop.png
 		${CMAKE_SOURCE_DIR}/livearea/icon0.png icon0.png
 )

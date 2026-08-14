@@ -287,6 +287,7 @@ bool populate_apps_database(const char *file, bool is_psp) {
 			return is_empty_catalog;
 		}
 		bool has_likes_field = strstr(buffer, "\"likes\":") != nullptr;
+		bool has_score_field = strstr(buffer, "\"score\":") != nullptr;
 		char *ptr = buffer;
 		char *end, *end2;
 		std::vector<std::string> new_favorites;
@@ -302,6 +303,7 @@ bool populate_apps_database(const char *file, bool is_psp) {
 			node->requirements = nullptr;
 			node->next_clash = nullptr;
 			node->prev_clash = nullptr;
+			node->score = 0.0f;
 			ptr = get_value_from_json(node->icon, ptr, "icon", nullptr);
 			if (!strstr(icons_db, node->icon) && missing_icons_num < 2048) {
 				missing_icons[missing_icons_num++] = node;
@@ -413,6 +415,10 @@ bool populate_apps_database(const char *file, bool is_psp) {
 			node->trophies = atoi(smalldata);
 			ptr = get_value_from_json(smalldata, ptr, "ai", nullptr);
 			node->ai = atoi(smalldata);
+			if (!is_psp && has_score_field) {
+				ptr = get_value_from_json(smalldata, ptr, "score", nullptr);
+				node->score = atof(smalldata);
+			}
 			ptr = get_value_from_json(node->data_link, ptr, "data", nullptr);
 			ptr = get_value_from_json(node->url, ptr, "url", nullptr);
 			ptr = get_value_from_json(smalldata, ptr, "trusted", nullptr);
@@ -532,6 +538,7 @@ bool populate_apps_database_vitadb_legacy(const char *file, bool is_psp) {
 			node->requirements = nullptr;
 			node->next_clash = nullptr;
 			node->prev_clash = nullptr;
+			node->score = 0.0f;
 			node->trusted = false;
 			node->direct = false;
 			node->added[0] = 0; // no such concept on this source - see SORT_APPS_RECENTLY_ADDED

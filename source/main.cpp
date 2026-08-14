@@ -107,7 +107,7 @@ int trophies_feature = FEATURE_OFF;
 
 SceUID trophy_thd;
 static int preview_width, preview_height, preview_x, preview_y;
-GLuint preview_icon = 0, preview_shot = 0, bg_image = 0, trp_icon = 0, star_icon = 0, crank_icon = 0, empty_icon = 0;
+GLuint preview_icon = 0, preview_shot = 0, bg_image = 0, trp_icon = 0, star_icon = 0, crank_icon = 0, slop_icon = 0, empty_icon = 0;
 void load_preview(AppSelection *game) {
 	if (old_hovered == game)
 		return;
@@ -221,68 +221,74 @@ void PrepareTrophy(const char *tid, const char *name, int index, int count) {
 }
 
 enum {
-	FILTER_VITA_APPS_ALL,
 	FILTER_VITA_APPS_GAME,
 	FILTER_VITA_APPS_PORT,
 	FILTER_VITA_APPS_UTILITY,
 	FILTER_VITA_APPS_EMULATOR,
 	FILTER_VITA_APPS_FAVORITES,
-	FILTER_VITA_APPS_FREEWARE,
+	FILTER_VITA_APPS_NON_FREEWARE,
 	FILTER_VITA_APPS_NOT_INSTALLED,
 	FILTER_VITA_APPS_OUTDATED,
 	FILTER_VITA_APPS_INSTALLED,
 	FILTER_VITA_APPS_TROPHY,
-	FILTER_VITA_APPS_NO_AI,
-	FILTER_VITA_APPS_AI,
+	FILTER_VITA_APPS_AI_ASSISTED,
+	FILTER_VITA_APPS_VIBECODED,
 	FILTER_VITA_APPS_NOT_TRUSTED,
 	FILTER_VITA_APPS_TRUSTED
 };
 
 const char *filter_vita_apps_modes[] = {
-	"All Apps",
 	"Original Games",
 	"Game Ports",
 	"Utilities",
 	"Emulators",
 	"Favorites Apps",
-	"Freeware Apps",
+	"Non Freeware Apps",
 	"Not Installed Apps",
 	"Outdated Apps",
 	"Installed Apps",
 	"Apps with Trophies",
-	"Apps not using AI",
-	"Apps using AI",
+	"AI Assisted Apps",
+	"Vibecoded Apps",
 	"Not Trusted Apps",
 	"Trusted Apps",
 };
 
+bool filter_vita_apps_states[] = {true, true, true, true, true, true, true, true, true, true, true, true, true, true};
+
 enum {
-	FILTER_PSP_APPS_ALL,
 	FILTER_PSP_APPS_GAME,
 	FILTER_PSP_APPS_PORT,
 	FILTER_PSP_APPS_UTILITY,
 	FILTER_PSP_APPS_EMULATOR,
-	FILTER_PSP_APPS_FREEWARE,
+	FILTER_PSP_APPS_FAVORITES,
+	FILTER_PSP_APPS_NON_FREEWARE,
 	FILTER_PSP_APPS_NOT_INSTALLED,
 	FILTER_PSP_APPS_OUTDATED,
 	FILTER_PSP_APPS_INSTALLED,
+	FILTER_PSP_APPS_AI_ASSISTED,
+	FILTER_PSP_APPS_VIBECODED,
 	FILTER_PSP_APPS_NOT_TRUSTED,
 	FILTER_PSP_APPS_TRUSTED,
 };
 
 const char *filter_psp_apps_modes[] = {
-	"All Apps",
 	"Original Games",
 	"Game Ports",
 	"Utilities",
 	"Emulators",
-	"Freeware Apps",
+	"Favorites Apps",
+	"Non Freeware Apps",
 	"Not Installed Apps",
 	"Outdated Apps",
 	"Installed Apps",
+	"AI Assisted Apps",
+	"Vibecoded Apps",
 	"Not Trusted Apps",
 	"Trusted Apps"
 };
+
+bool filter_psp_apps_states[] = {true, true, true, true, true, true, true, true, true, true, true, true, true};
 
 enum {
 	FILTER_THEMES_ALL,
@@ -300,29 +306,60 @@ int sort_idx = 0;
 int old_sort_idx = -1;
 
 bool filterVitaApps(AppSelection *p) {
-	if (filter_idx) {
-		int filter_cat = filter_idx > 2 ? (filter_idx + 1) : filter_idx;
-		if (filter_cat <= 5) {
-			return p->type[0] - '0' != filter_cat;
-		} else {
-			filter_cat -= 6;
-			if (filter_cat == 0) { // Favorites
-				return !p->favorites;
-			} else if (filter_cat == 1) { // Freeware Apps
-				return p->requirements && strstr(p->requirements, "Game Data Files");
-			} else {
-				filter_cat -= 2;
-				if (filter_cat < 2) {
-					return p->state != filter_cat;
-				} else if (filter_cat == 2) { // Installed Apps
-					return p->state == APP_UNTRACKED;
-				} else if (filter_cat == 3) {
-					return !p->trophies;
-				} else if (filter_cat < 6) {
-					return p->ai == (filter_cat == 4);
-				} else {
-					return p->trusted == (filter_cat == 6);
-				}
+	int cat = (p->type[0] - '0') - 1;
+	for (int i = 0; i < sizeof(filter_vita_apps_states) / sizeof(*filter_vita_apps_states); i++) {
+		if (!filter_vita_apps_states[i]) {
+			switch (i) {
+			case FILTER_VITA_APPS_GAME:
+			case FILTER_VITA_APPS_PORT:
+				if (cat == i)
+					return true;
+				break;
+			case FILTER_VITA_APPS_UTILITY:
+			case FILTER_VITA_APPS_EMULATOR:
+				if (cat - 1 == i)
+					return true;
+				break;
+			case FILTER_VITA_APPS_FAVORITES:
+				if (p->favorites)
+					return true;
+				break;
+			case FILTER_VITA_APPS_NON_FREEWARE:
+				if (p->requirements && strstr(p->requirements, "Game Data Files"))
+					return true;
+				break;
+			case FILTER_VITA_APPS_NOT_INSTALLED:
+				if (p->state == APP_UNTRACKED)
+					return true;
+				break;
+			case FILTER_VITA_APPS_OUTDATED:
+				if (p->state == APP_OUTDATED)
+					return true;
+				break;
+			case FILTER_VITA_APPS_INSTALLED:
+				if (p->state != APP_UNTRACKED)
+					return true;
+				break;
+			case FILTER_VITA_APPS_TROPHY:
+				if (p->trophies)
+					return true;
+				break;
+			case FILTER_VITA_APPS_AI_ASSISTED:
+				if (p->ai == APP_AI_ASSISTED)
+					return true;
+				break;
+			case FILTER_VITA_APPS_VIBECODED:
+				if (p->ai == APP_VIBECODED)
+					return true;
+				break;	
+			case FILTER_VITA_APPS_NOT_TRUSTED:
+				if (!p->trusted)
+					return true;
+				break;
+			case FILTER_VITA_APPS_TRUSTED:
+				if (p->trusted)
+					return true;
+				break;
 			}
 		}
 	}
@@ -330,23 +367,56 @@ bool filterVitaApps(AppSelection *p) {
 }
 
 bool filterPspApps(AppSelection *p) {
-	if (filter_idx) {
-		int filter_cat = filter_idx > 2 ? (filter_idx + 1) : filter_idx;
-		if (filter_cat <= 5) {
-			return p->type[0] - '0' != filter_cat;
-		} else {
-			filter_cat -= 6;
-			if (filter_cat == 0) { // Freeware Apps
-				return p->requirements && strstr(p->requirements, "Game Data Files");
-			} else {
-				filter_cat--;
-				if (filter_cat < 2) {
-					return p->state != filter_cat;
-				} else if (filter_cat == 2) { // Installed Apps
-					return p->state == APP_UNTRACKED;
-				} else {
-					return p->trusted == (filter_cat == 3);
-				}
+	int cat = (p->type[0] - '0') - 1;
+	for (int i = 0; i < sizeof(filter_psp_apps_states) / sizeof(*filter_psp_apps_states); i++) {
+		if (!filter_psp_apps_states[i]) {
+			switch (i) {
+			case FILTER_PSP_APPS_GAME:
+			case FILTER_PSP_APPS_PORT:
+				if (cat == i)
+					return true;
+				break;
+			case FILTER_PSP_APPS_UTILITY:
+			case FILTER_PSP_APPS_EMULATOR:
+				if (cat - 1 == i)
+					return true;
+				break;
+			case FILTER_PSP_APPS_FAVORITES:
+				if (p->favorites)
+					return true;
+				break;
+			case FILTER_PSP_APPS_NON_FREEWARE:
+				if (p->requirements && strstr(p->requirements, "Game Data Files"))
+					return true;
+				break;
+			case FILTER_PSP_APPS_NOT_INSTALLED:
+				if (p->state == APP_UNTRACKED)
+					return true;
+				break;
+			case FILTER_PSP_APPS_OUTDATED:
+				if (p->state == APP_OUTDATED)
+					return true;
+				break;
+			case FILTER_PSP_APPS_INSTALLED:
+				if (p->state != APP_UNTRACKED)
+					return true;
+				break;
+			case FILTER_PSP_APPS_AI_ASSISTED:
+				if (p->ai == APP_AI_ASSISTED)
+					return true;
+				break;
+			case FILTER_PSP_APPS_VIBECODED:
+				if (p->ai == APP_VIBECODED)
+					return true;
+				break;				
+			case FILTER_PSP_APPS_NOT_TRUSTED:
+				if (!p->trusted)
+					return true;
+				break;
+			case FILTER_PSP_APPS_TRUSTED:
+				if (p->trusted)
+					return true;
+				break;
 			}
 		}
 	}
@@ -906,7 +976,7 @@ extract_libshacccg:
 	// Initializing vitaGL
 	AppSelection *hovered = nullptr;
 	vglSetCircularPoolSize(3 * 1024);
-	vglInitWithCustomThreshold(0, 960, 544, 0x1800000, 0x2000000, 0, 0x10000000, SCE_GXM_MULTISAMPLE_NONE);
+	vglInitExtended(0, 960, 544, 0x1800000, SCE_GXM_MULTISAMPLE_NONE);
 	prepare_simple_drawer();
 	prepare_bubble_drawer();
 
@@ -928,6 +998,12 @@ extract_libshacccg:
 	icon_data = stbi_load("app0:crank.png", &w, &h, NULL, 4);
 	glGenTextures(1, &crank_icon);
 	glTextureImage2D(crank_icon, 0, GL_RGBA, w, h, 0, GL_RGBA, GL_UNSIGNED_BYTE, icon_data);
+	free(icon_data);
+	
+	// Load slop icon
+	icon_data = stbi_load("app0:slop.png", &w, &h, NULL, 4);
+	glGenTextures(1, &slop_icon);
+	glTextureImage2D(slop_icon, 0, GL_RGBA, w, h, 0, GL_RGBA, GL_UNSIGNED_BYTE, icon_data);
 	free(icon_data);	
 	
 	// Load star icon
@@ -1251,24 +1327,32 @@ extract_libshacccg:
 				ImGui::EndCombo();
 			}
 		} else if (mode_idx == MODE_VITA_HBS) {
-			if (ImGui::BeginCombo("##combo", filter_vita_apps_modes[filter_idx])) {
+			int active_filters = 0;
+			for (int n = 0; n < sizeof(filter_vita_apps_modes) / sizeof(*filter_vita_apps_modes); n++) {
+				if (filter_vita_apps_states[n]) {
+					active_filters++;
+				}
+			}
+			char active_filters_str[32];
+			sprintf(active_filters_str, "%d active", active_filters);
+			if (ImGui::BeginCombo("##combo", active_filters_str)) {
 				for (int n = 0; n < sizeof(filter_vita_apps_modes) / sizeof(*filter_vita_apps_modes); n++) {
-					bool is_selected = filter_idx == n;
-					if (ImGui::Selectable(filter_vita_apps_modes[n], is_selected))
-						filter_idx = n;
-					if (is_selected)
-						ImGui::SetItemDefaultFocus();
+					ImGui::Checkbox(filter_vita_apps_modes[n], &filter_vita_apps_states[n]);
 				}
 				ImGui::EndCombo();
 			}
 		} else {
-			if (ImGui::BeginCombo("##combo", filter_psp_apps_modes[filter_idx])) {
+			int active_filters = 0;
+			for (int n = 0; n < sizeof(filter_psp_apps_modes) / sizeof(*filter_psp_apps_modes); n++) {
+				if (filter_psp_apps_states[n]) {
+					active_filters++;
+				}
+			}
+			char active_filters_str[32];
+			sprintf(active_filters_str, "%d active", active_filters);
+			if (ImGui::BeginCombo("##combo", active_filters_str)) {
 				for (int n = 0; n < sizeof(filter_psp_apps_modes) / sizeof(*filter_psp_apps_modes); n++) {
-					bool is_selected = filter_idx == n;
-					if (ImGui::Selectable(filter_psp_apps_modes[n], is_selected))
-						filter_idx = n;
-					if (is_selected)
-						ImGui::SetItemDefaultFocus();
+					ImGui::Checkbox(filter_psp_apps_modes[n], &filter_psp_apps_states[n]);
 				}
 				ImGui::EndCombo();
 			}			
@@ -1478,7 +1562,7 @@ extract_libshacccg:
 					bool reset_cursor = false;
 					if (g->ai) {
 						ImGui::SetCursorPosY(y - 2.0f);
-						ImGui::Image((void*)crank_icon, ImVec2(20, 20));
+						ImGui::Image(g->ai == 1 ? (void*)crank_icon : (void*)slop_icon, ImVec2(20, 20));
 						reset_cursor = true;
 						x_offs += 20.0f;
 						ImGui::SameLine();
@@ -1573,18 +1657,26 @@ extract_libshacccg:
 					ImGui::SetCursorPosY(116);
 					ImGui::SetCursorPosX(140);
 				}
-				char size_str[64];
+				char size_str[64], size_str2[64] = {};
 				char *dummy;
 				uint64_t sz;
 				if (strlen(hovered->data_link) > 5) {
 					sz = strtoull(hovered->size, &dummy, 10);
 					uint64_t sz2 = strtoull(hovered->data_size, &dummy, 10);
-					sprintf(size_str, "%s: %.2f %s, Data: %.2f %s", mode_idx == MODE_VITA_HBS ? "VPK" : "App", format_size(sz), format_size_str(sz), format_size(sz2), format_size_str(sz2));
+					sprintf(size_str, "%s: %.2f %s", mode_idx == MODE_VITA_HBS ? "VPK" : "App", format_size(sz), format_size_str(sz));
+					sprintf(size_str2, "Data: %.2f %s", format_size(sz2), format_size_str(sz2));
 				} else {
 					sz = strtoull(hovered->size, &dummy, 10);
 					sprintf(size_str, "%s: %.2f %s", mode_idx == MODE_VITA_HBS ? "VPK" : "App", format_size(sz), format_size_str(sz));
 				}
 				ImGui::Text(size_str);
+				if (size_str2[0]) {
+					if (mode_idx == MODE_VITA_HBS) {
+						ImGui::SetCursorPosY(132);
+						ImGui::SetCursorPosX(140);
+					}
+					ImGui::Text(size_str2);
+				}
 				ImGui::TextColored(TextLabel, "Description:");
 				ImGui::TextWrapped(hovered->desc);
 				ImGui::SetCursorPosY(6);
@@ -1616,14 +1708,37 @@ extract_libshacccg:
 					} else {
 						ImGui::Text(hovered->titleid);
 					}
-					if (hovered->trusted) {
-						ImGui::SetCursorPosY(104);
+					if (hovered->score > 0.0f) {
+						ImGui::SetCursorPosY(100);
 						ImGui::SetCursorPosX(320);
-						ImGui::TextColored(TextUpdated, "Trusted");
+						ImGui::TextColored(TextLabel, "Game Score:");
+						ImGui::SetCursorPosY(116);
+						ImGui::SetCursorPosX(320);
+						if (hovered->score < 60.0f)
+							ImGui::TextColored(ImVec4(0.85f, 0.20f, 0.20f, 1.0f), "%.1f", hovered->score);
+						else if (hovered->score < 70.0f)
+							ImGui::TextColored(ImVec4(0.95f, 0.55f, 0.15f, 1.0f), "%.1f", hovered->score);
+						else if (hovered->score < 80.0f)
+							ImGui::TextColored(ImVec4(0.95f, 0.80f, 0.15f, 1.0f), "%.1f", hovered->score);
+						else if (hovered->score < 90.0f)
+							ImGui::TextColored(ImVec4(0.25f, 0.75f, 0.35f, 1.0f), "%.1f", hovered->score);
+						else {
+							float t = (float)ImGui::GetTime();
+							float pulse = (sinf(t * 3.0f) + 1.0f) * 0.5f;
+							ImVec4 green(0.25f + pulse * 0.20f, 0.75f + pulse * 0.25f, 0.35f + pulse * 0.20f, 1.0f);
+							ImVec2 pos = ImGui::GetCursorScreenPos();
+							char score_text[32];
+							sprintf(score_text, "%.1f", hovered->score);
+							ImDrawList *draw = ImGui::GetWindowDrawList();
+							float glow_alpha = 0.10f + pulse * 0.20f;
+							ImU32 glow = ImGui::ColorConvertFloat4ToU32(ImVec4(0.25f, 1.0f, 0.40f, glow_alpha));
+							draw->AddText(ImVec2(pos.x - 1.0f, pos.y), glow, score_text);
+							draw->AddText(ImVec2(pos.x + 1.0f, pos.y), glow, score_text);
+							draw->AddText(ImVec2(pos.x, pos.y - 1.0f), glow, score_text);
+							draw->AddText(ImVec2(pos.x, pos.y + 1.0f), glow, score_text);
+							ImGui::TextColored(green, "%.1f", hovered->score);
+						}
 					}
-					ImGui::SetCursorPosY(120);
-					ImGui::SetCursorPosX(320);
-					ImGui::TextColored(TextLabel, hovered->ai ? "Uses AI" : "");
 					if (hovered->state != APP_UNTRACKED) {
 						ImGui::SetCursorPosY(164);
 						ImGui::SetCursorPosX(320);
