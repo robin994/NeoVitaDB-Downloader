@@ -77,7 +77,9 @@ const char *sort_modes_apps_str[9] = {
 	"Alphabetical (A-Z)",
 	"Alphabetical (Z-A)",
 	"Smallest",
-	"Largest"
+	"Largest",
+	"Highest Game Score",
+	"Lowest Game Score"
 };
 
 const char *sort_modes_themes_str[2] = {
@@ -297,6 +299,7 @@ bool populate_apps_database(const char *file, bool is_psp) {
 				break;
 			AppSelection *node = (AppSelection*)malloc(sizeof(AppSelection));
 			node->search_filtered = false;
+			node->filtered = false;
 			node->desc = nullptr;
 			node->requirements = nullptr;
 			node->next_clash = nullptr;
@@ -937,6 +940,20 @@ void sort_apps_list(AppSelection **start, int sort_idx) {
 				d1 = strtoll(ptr1->size, &dummy, 10) + strtoll(ptr1->data_size, &dummy, 10);
 				d2 = strtoll(ptr1->next->size, &dummy, 10) + strtoll(ptr1->next->data_size, &dummy, 10);
 				if (d1 < d2) {
+					swap_apps(lptr, ptr1, ptr1->next); 
+					swapped = true;
+					last_swapped = true;
+				}
+				break;
+			case SORT_APPS_HIGHEST_SCORE:
+				if (ptr1->score < ptr1->next->score) {
+					swap_apps(lptr, ptr1, ptr1->next); 
+					swapped = true;
+					last_swapped = true;
+				}
+				break;
+			case SORT_APPS_LOWEST_SCORE:
+				if (ptr1->score > ptr1->next->score) {
 					swap_apps(lptr, ptr1, ptr1->next); 
 					swapped = true;
 					last_swapped = true;

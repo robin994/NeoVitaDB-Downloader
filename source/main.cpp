@@ -71,6 +71,7 @@ void *audio_buffer = nullptr;
 bool shuffle_themes = false;
 int SCE_CTRL_CANCEL = SCE_CTRL_CROSS;
 bool update_detected = false;
+bool filters_dirty = false;
 
 #define SCE_CTRL_CANCEL_LITERAL (SCE_CTRL_CANCEL == SCE_CTRL_CIRCLE ? "Circle" : "Cross")
 
@@ -108,6 +109,26 @@ int trophies_feature = FEATURE_OFF;
 SceUID trophy_thd;
 static int preview_width, preview_height, preview_x, preview_y;
 GLuint preview_icon = 0, preview_shot = 0, bg_image = 0, trp_icon = 0, star_icon = 0, crank_icon = 0, slop_icon = 0, empty_icon = 0;
+
+static void restore_navigation_focus(ImGuiID item_id, const ImRect& item_rect) {
+	ImGuiContext *context = ImGui::GetCurrentContext();
+	ImGuiWindow *window = context->CurrentWindow;
+	ImGui::FocusWindow(window);
+	context->NavLayer = window->DC.NavLayerCurrent;
+	context->NavId = item_id;
+	window->NavLastIds[context->NavLayer] = context->NavId;
+	window->NavRectRel[context->NavLayer] = item_rect;
+	context->NavInitRequest = false;
+	context->NavInitResultId = 0;
+	context->NavMoveRequest = false;
+	context->NavMoveRequestForward = ImGuiNavForward_None;
+	context->NavMoveResultLocal.Clear();
+	context->NavMoveResultOther.Clear();
+	context->NavAnyRequest = false;
+	context->NavDisableHighlight = false;
+	context->NavDisableMouseHover = true;
+}
+
 void load_preview(AppSelection *game) {
 	if (old_hovered == game)
 		return;
@@ -305,48 +326,64 @@ const char *filter_themes_modes[] = {
 int sort_idx = 0;
 int old_sort_idx = -1;
 
+#define filter_ret(x) \
+	p->filtered = x; \
+	return x;
+
 bool filterVitaApps(AppSelection *p) {
+	if (!filters_dirty)
+		return p->filtered;
+
 	int cat = (p->type[0] - '0') - 1;
 	for (int i = 0; i < sizeof(filter_vita_apps_states) / sizeof(*filter_vita_apps_states); i++) {
 		if (!filter_vita_apps_states[i]) {
 			switch (i) {
 			case FILTER_VITA_APPS_GAME:
 			case FILTER_VITA_APPS_PORT:
-				if (cat == i)
-					return true;
+				if (cat == i) {
+					filter_ret(true)
+				}
 				break;
 			case FILTER_VITA_APPS_UTILITY:
 			case FILTER_VITA_APPS_EMULATOR:
-				if (cat - 1 == i)
-					return true;
+				if (cat - 1 == i) {
+					filter_ret(true)
+				}
 				break;
 			case FILTER_VITA_APPS_FAVORITES:
-				if (p->favorites)
-					return true;
+				if (p->favorites) {
+					filter_ret(true)
+				}
 				break;
 			case FILTER_VITA_APPS_NON_FREEWARE:
-				if (p->requirements && strstr(p->requirements, "Game Data Files"))
-					return true;
+				if (p->requirements && strstr(p->requirements, "Game Data Files")) {
+					filter_ret(true)
+				}
 				break;
 			case FILTER_VITA_APPS_NOT_INSTALLED:
-				if (p->state == APP_UNTRACKED)
-					return true;
+				if (p->state == APP_UNTRACKED) {
+					filter_ret(true)
+				}
 				break;
 			case FILTER_VITA_APPS_OUTDATED:
-				if (p->state == APP_OUTDATED)
-					return true;
+				if (p->state == APP_OUTDATED) {
+					filter_ret(true)
+				}
 				break;
 			case FILTER_VITA_APPS_INSTALLED:
-				if (p->state != APP_UNTRACKED)
-					return true;
+				if (p->state != APP_UNTRACKED) {
+					filter_ret(true)
+				}
 				break;
 			case FILTER_VITA_APPS_TROPHY:
-				if (p->trophies)
-					return true;
+				if (p->trophies) {
+					filter_ret(true)
+				}
 				break;
 			case FILTER_VITA_APPS_AI_ASSISTED:
-				if (p->ai == APP_AI_ASSISTED)
-					return true;
+				if (p->ai != APP_HUMAN_MADE) {
+					filter_ret(true)
+				}
 				break;
 			case FILTER_VITA_APPS_VIBECODED:
 				if (p->ai == APP_VIBECODED)
@@ -363,51 +400,63 @@ bool filterVitaApps(AppSelection *p) {
 			}
 		}
 	}
-	return false;
+	filter_ret(false)
 }
 
 bool filterPspApps(AppSelection *p) {
+	if (!filters_dirty)
+		return p->filtered;
+
 	int cat = (p->type[0] - '0') - 1;
 	for (int i = 0; i < sizeof(filter_psp_apps_states) / sizeof(*filter_psp_apps_states); i++) {
 		if (!filter_psp_apps_states[i]) {
 			switch (i) {
 			case FILTER_PSP_APPS_GAME:
 			case FILTER_PSP_APPS_PORT:
-				if (cat == i)
-					return true;
+				if (cat == i) {
+					filter_ret(true)
+				}
 				break;
 			case FILTER_PSP_APPS_UTILITY:
 			case FILTER_PSP_APPS_EMULATOR:
-				if (cat - 1 == i)
-					return true;
+				if (cat - 1 == i) {
+					filter_ret(true)
+				}
 				break;
 			case FILTER_PSP_APPS_FAVORITES:
-				if (p->favorites)
-					return true;
+				if (p->favorites) {
+					filter_ret(true)
+				}
 				break;
 			case FILTER_PSP_APPS_NON_FREEWARE:
-				if (p->requirements && strstr(p->requirements, "Game Data Files"))
-					return true;
+				if (p->requirements && strstr(p->requirements, "Game Data Files")) {
+					filter_ret(true)
+				}
 				break;
 			case FILTER_PSP_APPS_NOT_INSTALLED:
-				if (p->state == APP_UNTRACKED)
-					return true;
+				if (p->state == APP_UNTRACKED) {
+					filter_ret(true)
+				}
 				break;
 			case FILTER_PSP_APPS_OUTDATED:
-				if (p->state == APP_OUTDATED)
-					return true;
+				if (p->state == APP_OUTDATED) {
+					filter_ret(true)
+				}
 				break;
 			case FILTER_PSP_APPS_INSTALLED:
-				if (p->state != APP_UNTRACKED)
-					return true;
+				if (p->state != APP_UNTRACKED) {
+					filter_ret(true)
+				}
 				break;
 			case FILTER_PSP_APPS_AI_ASSISTED:
-				if (p->ai == APP_AI_ASSISTED)
-					return true;
+				if (p->ai != APP_HUMAN_MADE) {
+					filter_ret(true)
+				}
 				break;
 			case FILTER_PSP_APPS_VIBECODED:
-				if (p->ai == APP_VIBECODED)
-					return true;
+				if (p->ai == APP_VIBECODED) {
+					filter_ret(true)
+				}
 				break;				
 			case FILTER_PSP_APPS_NOT_TRUSTED:
 				if (!p->trusted)
@@ -420,7 +469,7 @@ bool filterPspApps(AppSelection *p) {
 			}
 		}
 	}
-	return false;
+	filter_ret(false)
 }
 
 bool filterThemes(ThemeSelection *p) {
@@ -1186,6 +1235,9 @@ extract_libshacccg:
 	bool fast_increment = false;
 	bool fast_decrement = false;
 	bool extra_menu_invoked = false;
+	AppSelection *restore_app_focus = nullptr;
+	ImGuiID hovered_app_id = 0;
+	ImRect hovered_app_rect;
 	bool has_touched = false;
 	bool is_app_hovered;
 	float right_len = 0.0f;
@@ -1240,6 +1292,12 @@ extract_libshacccg:
 		ImGui::SetNextWindowPos(ImVec2(0, 21), ImGuiSetCond_Always);
 		ImGui::SetNextWindowSize(ImVec2(553, 523), ImGuiSetCond_Always);
 		ImGui::Begin("##main", nullptr, ImGuiWindowFlags_NoTitleBar | ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoCollapse | ImGuiWindowFlags_NoBringToFrontOnFocus);
+		if (restore_app_focus && hovered_app_id) {
+			hovered = restore_app_focus;
+			restore_navigation_focus(hovered_app_id, hovered_app_rect);
+			restore_app_focus = nullptr;
+			go_to_top = false;
+		}
 		
 		ImGui::AlignTextToFramePadding();
 		ImGui::Text("Search: ");
@@ -1337,7 +1395,9 @@ extract_libshacccg:
 			sprintf(active_filters_str, "%d active", active_filters);
 			if (ImGui::BeginCombo("##combo", active_filters_str)) {
 				for (int n = 0; n < sizeof(filter_vita_apps_modes) / sizeof(*filter_vita_apps_modes); n++) {
-					ImGui::Checkbox(filter_vita_apps_modes[n], &filter_vita_apps_states[n]);
+					if (ImGui::Checkbox(filter_vita_apps_modes[n], &filter_vita_apps_states[n])) {
+						filters_dirty = true;
+					}
 				}
 				ImGui::EndCombo();
 			}
@@ -1352,7 +1412,9 @@ extract_libshacccg:
 			sprintf(active_filters_str, "%d active", active_filters);
 			if (ImGui::BeginCombo("##combo", active_filters_str)) {
 				for (int n = 0; n < sizeof(filter_psp_apps_modes) / sizeof(*filter_psp_apps_modes); n++) {
-					ImGui::Checkbox(filter_psp_apps_modes[n], &filter_psp_apps_states[n]);
+					if (ImGui::Checkbox(filter_psp_apps_modes[n], &filter_psp_apps_states[n])) {
+						filters_dirty = true;
+					}
 				}
 				ImGui::EndCombo();
 			}			
@@ -1436,6 +1498,9 @@ extract_libshacccg:
 					if (ImGui::IsItemHovered()) {
 						is_app_hovered = true;
 						hovered = (AppSelection *)g;
+						hovered_app_id = ImGui::GetCurrentContext()->CurrentWindow->DC.LastItemId;
+						hovered_app_rect = ImGui::GetCurrentContext()->CurrentWindow->DC.LastItemRect;
+						hovered_app_rect.Translate(ImVec2(-ImGui::GetWindowPos().x, -ImGui::GetWindowPos().y));
 						if (fast_increment)
 							increment_idx = 1;
 						else if (fast_decrement) {
@@ -1498,20 +1563,21 @@ extract_libshacccg:
 				}
 				if (!g->search_filtered) {
 					float y = ImGui::GetCursorPosY() + 3.0f;
+					char lbl[128];
+					const char *button_label = g->name;
 					if (g->trophies || g->favorites || g->ai) {
-						char lbl[128];
 						sprintf(lbl, "##%d", btn_idx++);
-						if (ImGui::Button(lbl, ImVec2(-1.0f, 0.0f))) {
-							to_download = g;
-						}
-					} else {
-						if (ImGui::Button(g->name, ImVec2(-1.0f, 0.0f))) {
-							to_download = g;
-						}
+						button_label = lbl;
+					}
+					if (ImGui::Button(button_label, ImVec2(-1.0f, 0.0f))) {
+						to_download = g;
 					}
 					if (ImGui::IsItemHovered()) {
 						is_app_hovered = true;
 						hovered = g;
+						hovered_app_id = ImGui::GetCurrentContext()->CurrentWindow->DC.LastItemId;
+						hovered_app_rect = ImGui::GetCurrentContext()->CurrentWindow->DC.LastItemRect;
+						hovered_app_rect.Translate(ImVec2(-ImGui::GetWindowPos().x, -ImGui::GetWindowPos().y));
 						if (fast_increment)
 							increment_idx = 1;
 						else if (fast_decrement) {
@@ -1593,6 +1659,7 @@ extract_libshacccg:
 				g = g->next;
 			}
 		}
+		filters_dirty = false;
 		dirty_filter = false;
 		ImGui::PopStyleVar();
 		if (decrement_stack_idx == filtered_entries || !is_app_hovered)
@@ -1856,17 +1923,20 @@ extract_libshacccg:
 				if (ImGui::Button("Install", ImVec2(-1.0f, 0.0f))) {
 					to_download = hovered;
 					extra_menu_invoked = false;
+					restore_app_focus = hovered;
 				}
 			} else {
 				if (hovered->state == APP_OUTDATED) {
 					if (ImGui::Button("Update", ImVec2(-1.0f, 0.0f))) {
 						to_download = hovered;
 						extra_menu_invoked = false;
+						restore_app_focus = hovered;
 					}
 				}
 				if (ImGui::Button("Uninstall", ImVec2(-1.0f, 0.0f))) {
 					to_uninstall = hovered;
 					extra_menu_invoked = false;
+					restore_app_focus = hovered;
 				}
 			}
 			if (mode_idx != MODE_THEMES) {
@@ -1878,6 +1948,7 @@ extract_libshacccg:
 					}
 					hovered->favorites = !hovered->favorites;
 					extra_menu_invoked = false;
+					restore_app_focus = hovered;
 				}
 			}
 			if (hovered->state == APP_OUTDATED) {
@@ -1893,6 +1964,7 @@ extract_libshacccg:
 					sceIoClose(f);
 					hovered->state = APP_UPDATED;
 					extra_menu_invoked = false;
+					restore_app_focus = hovered;
 				}
 			}
 			if (mode_idx == MODE_VITA_HBS && hovered->state != APP_UNTRACKED && hovered->blacklisted != APP_HARD_BLACKLISTED) {
@@ -1915,6 +1987,7 @@ extract_libshacccg:
 						clashes = clashes->next_clash;
 					}
 					extra_menu_invoked = false;
+					restore_app_focus = hovered;
 				}
 			}
 			if (hovered->trophies) {
@@ -2006,6 +2079,8 @@ extract_libshacccg:
 			} else if (video_is_finished()) {
 				trailer_feature = FEATURE_OFF;
 				close_trailer();
+				if (!extra_menu_invoked)
+					restore_app_focus = hovered;
 			}
 			ImGui::End();
 		}
@@ -2076,18 +2151,34 @@ extract_libshacccg:
 			go_to_top = true;
 		} else if (pad.buttons & SCE_CTRL_START && !(oldpad & SCE_CTRL_START) && hovered && (strlen(hovered->screenshots) > 5 || mode_idx == MODE_THEMES || strlen(hovered->trailer) > 5) && !show_changelog && !show_requirements && !trophies_feature) {
 			if (mode_idx == MODE_THEMES) {
-				screenshots_feature = screenshots_feature ? FEATURE_OFF : FEATURE_LOADING;
+				if (screenshots_feature) {
+					screenshots_feature = FEATURE_OFF;
+					if (!extra_menu_invoked)
+						restore_app_focus = hovered;
+				} else {
+					screenshots_feature = FEATURE_LOADING;
+				}
 			} else if (strlen(hovered->trailer) > 5) {
 				if (screenshots_feature) {
 					screenshots_feature = FEATURE_OFF;
+					if (!extra_menu_invoked)
+						restore_app_focus = hovered;
 				} else {
 					trailer_feature = trailer_feature ? FEATURE_OFF : FEATURE_LOADING;
 					if (!trailer_feature) {
 						close_trailer();
+						if (!extra_menu_invoked)
+							restore_app_focus = hovered;
 					}
 				}
 			} else {
-				screenshots_feature = screenshots_feature ? 0 : 1;
+				if (screenshots_feature) {
+					screenshots_feature = FEATURE_OFF;
+					if (!extra_menu_invoked)
+						restore_app_focus = hovered;
+				} else {
+					screenshots_feature = FEATURE_LOADING;
+				}
 			}
 		} else if (pad.buttons & SCE_CTRL_SELECT && !(oldpad & SCE_CTRL_SELECT) && !trailer_feature && !screenshots_feature && !show_changelog && !show_requirements && !trophies_feature) {
 			if (mode_idx == MODE_THEMES) {
@@ -2108,8 +2199,14 @@ extract_libshacccg:
 					install_theme_from_shuffle(false);
 				} else
 					sceIoRemove("ux0:data/NeoVitaDB/shuffle.cfg");
-			} else if (hovered)
-				extra_menu_invoked = !extra_menu_invoked;
+			} else if (hovered) {
+				if (extra_menu_invoked) {
+					extra_menu_invoked = false;
+					restore_app_focus = hovered;
+				} else {
+					extra_menu_invoked = true;
+				}
+			}
 		} else if (pad.buttons & SCE_CTRL_LEFT && !(oldpad & SCE_CTRL_LEFT) && !trailer_feature && !show_changelog && !show_requirements && !trophies_feature && (!extra_menu_invoked || screenshots_feature)) {
 			if (screenshots_feature)
 				cur_ss_idx--;
@@ -2144,11 +2241,16 @@ extract_libshacccg:
 				}
 			} else if (screenshots_feature) {
 				screenshots_feature = FEATURE_OFF;
+				if (!extra_menu_invoked)
+					restore_app_focus = hovered;
 			} else if (trailer_feature) {
 				close_trailer();
 				trailer_feature = FEATURE_OFF;
+				if (!extra_menu_invoked)
+					restore_app_focus = hovered;
 			} else if (extra_menu_invoked) {
 				extra_menu_invoked = false;
+				restore_app_focus = hovered;
 			} else
 				go_to_top = true;
 		} else if (pad.buttons & SCE_CTRL_TRIANGLE && !(oldpad & SCE_CTRL_TRIANGLE) && !trailer_feature && !screenshots_feature && !show_requirements && !trophies_feature && !show_changelog && !extra_menu_invoked) {
@@ -2204,7 +2306,9 @@ extract_libshacccg:
 				}
 				to_uninstall->state = APP_UNTRACKED;
 			}
+			restore_app_focus = to_uninstall;
 			to_uninstall = nullptr;
+			go_to_top = false;
 		}
 		
 		// Queued app download
