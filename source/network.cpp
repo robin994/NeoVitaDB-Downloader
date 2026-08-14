@@ -29,7 +29,7 @@
 #include "network.h"
 #include "utils.h"
 
-#define NEOVITADB_USER_AGENT "NeoVitaDB-Downloader/" VERSION " (PS Vita; +https://github.com/robin994/NeoVitaDB-Downloader)"
+#define NEOVITADB_USER_AGENT "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/58.0.3029.110 Safari/537.36"
 
 //#define DEBUG_NET // Uncomment this to enable downloader debugging
 
