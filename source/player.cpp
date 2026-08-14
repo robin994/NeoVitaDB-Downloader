@@ -81,55 +81,17 @@ void mem_free(void *p, void *ptr) {
 	free(ptr);
 }
 
-#define GPU_ALLOC_TRACK_MAX 16
-static void *gpu_alloc_tracked[GPU_ALLOC_TRACK_MAX];
-static int gpu_alloc_tracked_count = 0;
-
 void *gpu_alloc(void *p, uint32_t align, uint32_t size) {
 	if (align < FB_ALIGNMENT) {
 		align = FB_ALIGNMENT;
 	}
 	size = ALIGN_MEM(size, align);
-
-	void *res = NULL;
-	SceKernelAllocMemBlockOpt opt;
-	memset(&opt, 0, sizeof(opt));
-	opt.size = sizeof(SceKernelAllocMemBlockOpt);
-	opt.attr = SCE_KERNEL_ALLOC_MEMBLOCK_ATTR_HAS_ALIGNMENT;
-	opt.alignment = align;
-	SceUID memblock = sceKernelAllocMemBlock("Video Memblock", SCE_KERNEL_MEMBLOCK_TYPE_USER_CDRAM_RW, size, &opt);
-	if (memblock < 0) {
-		return NULL;
-	}
-	sceKernelGetMemBlockBase(memblock, &res);
-	sceGxmMapMemory(res, size, (SceGxmMemoryAttribFlags)(SCE_GXM_MEMORY_ATTRIB_READ | SCE_GXM_MEMORY_ATTRIB_WRITE));
-	if (gpu_alloc_tracked_count < GPU_ALLOC_TRACK_MAX) {
-		gpu_alloc_tracked[gpu_alloc_tracked_count++] = res;
-	}
-	return res;
-}
-
-static void gpu_free_one(void *ptr) {
-	SceUID memblock = sceKernelFindMemBlockByAddr(ptr, 0);
-	sceGxmUnmapMemory(ptr);
-	sceKernelFreeMemBlock(memblock);
-}
-
-static void gpu_alloc_sweep() {
-	for (int i = 0; i < gpu_alloc_tracked_count; i++) {
-		gpu_free_one(gpu_alloc_tracked[i]);
-	}
-	gpu_alloc_tracked_count = 0;
+	return vglAlloc(size, VGL_MEM_PHYCONT);
 }
 
 void gpu_free(void *p, void *ptr) {
-	for (int i = 0; i < gpu_alloc_tracked_count; i++) {
-		if (gpu_alloc_tracked[i] == ptr) {
-			gpu_alloc_tracked[i] = gpu_alloc_tracked[--gpu_alloc_tracked_count];
-			break;
-		}
-	}
-	gpu_free_one(ptr);
+	glFinish();
+	vglFree(ptr);
 }
 
 void video_events_handle(void* jumpback, int32_t event_type, int32_t src, void *data) {
@@ -264,7 +226,6 @@ void video_close() {
 			sceKernelWaitThreadEnd(video_stream_thid, NULL, NULL);
 		}
 		sceAvPlayerClose(movie_player);
-		gpu_alloc_sweep();
 		player_state = PLAYER_INACTIVE;
 		glDeleteTextures(VIDEO_BUFFERS_NUM, movie_frame);
 	}
@@ -314,7 +275,6 @@ bool video_open(const char *path) {
 		int add_res = sceAvPlayerAddSource(movie_player, "remote_stream.mp4"); // sceAvPlayer needs the source to end with ".mp4" for some reasons...
 		if (add_res < 0) {
 			sceAvPlayerClose(movie_player);
-			gpu_alloc_sweep();
 			glDeleteTextures(VIDEO_BUFFERS_NUM, movie_frame);
 			return false;
 		}
@@ -328,7 +288,6 @@ bool video_open(const char *path) {
 		int add_res = sceAvPlayerAddSource(movie_player, path);
 		if (add_res < 0) {
 			sceAvPlayerClose(movie_player);
-			gpu_alloc_sweep();
 			glDeleteTextures(VIDEO_BUFFERS_NUM, movie_frame);
 			return false;
 		}
@@ -350,7 +309,6 @@ bool video_open(const char *path) {
 		if (!got_frame) {
 			player_state = PLAYER_INACTIVE;
 			sceAvPlayerClose(movie_player);
-			gpu_alloc_sweep();
 			glDeleteTextures(VIDEO_BUFFERS_NUM, movie_frame);
 			return false;
 		}

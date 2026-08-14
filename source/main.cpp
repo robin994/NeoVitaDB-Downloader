@@ -452,7 +452,7 @@ void draw_background() {
 	glMatrixMode(GL_MODELVIEW);
 	glLoadIdentity();
 	glTexEnvi(GL_TEXTURE_ENV, GL_TEXTURE_ENV_MODE, GL_REPLACE);
-	vglDrawObjects(GL_TRIANGLE_STRIP, 4, GL_TRUE);
+	vglDrawObjects(GL_TRIANGLE_STRIP, 4);
 	glTexEnvi(GL_TEXTURE_ENV, GL_TEXTURE_ENV_MODE, GL_MODULATE);
 	glDisableClientState(GL_COLOR_ARRAY);
 }
@@ -905,6 +905,7 @@ extract_libshacccg:
 	
 	// Initializing vitaGL
 	AppSelection *hovered = nullptr;
+	vglSetCircularPoolSize(3 * 1024);
 	vglInitWithCustomThreshold(0, 960, 544, 0x1800000, 0x2000000, 0, 0x10000000, SCE_GXM_MULTISAMPLE_NONE);
 	prepare_simple_drawer();
 	prepare_bubble_drawer();
