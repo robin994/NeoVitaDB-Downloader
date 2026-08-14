@@ -25,6 +25,7 @@
 #include <vitaGL.h>
 #include <stdio.h>
 #include <malloc.h>
+#include "catalog.h"
 #include "dialogs.h"
 #include "extractor.h"
 #include "fios.h"
@@ -41,7 +42,7 @@ void init_read_buffer() {
 	read_buffer = (char *)memalign(64, READ_BUFFER_SIZE);
 }
 
-void early_extract_zip_file(char *file, char *dir) {
+bool early_extract_zip_file(char *file, char *dir) {
 	init_progressbar_dialog("Extracting ShaRKF00D"); // Hardcoded for now since it's the sole instance of this function
 	unz_global_info global_info;
 	unz_file_info file_info;
@@ -52,6 +53,17 @@ void early_extract_zip_file(char *file, char *dir) {
 	uint64_t curr_extracted_bytes = 0;
 	uint64_t curr_file_bytes = 0;
 	int num_files = global_info.number_entry;
+	if (num_files <= 0) {
+		unzClose(zipfile);
+		sceMsgDialogClose();
+		int status = sceMsgDialogGetStatus();
+		do {
+			vglSwapBuffers(GL_TRUE);
+			status = sceMsgDialogGetStatus();
+		} while (status != SCE_COMMON_DIALOG_STATUS_FINISHED);
+		sceMsgDialogTerm();
+		return false;
+	}
 	for (int zip_idx = 0; zip_idx < num_files; ++zip_idx) {
 		unzGetCurrentFileInfo(zipfile, &file_info, fname, 512, NULL, 0, NULL, 0);
 		total_extracted_bytes += file_info.uncompressed_size;
@@ -60,6 +72,7 @@ void early_extract_zip_file(char *file, char *dir) {
 	}
 	unzGoToFirstFile(zipfile);
 	uint32_t prog_delta = 100 / num_files;
+	bool ok = true;
 	for (int zip_idx = 0; zip_idx < num_files; ++zip_idx) {
 		unzGetCurrentFileInfo(zipfile, &file_info, fname, 512, NULL, 0, NULL, 0);
 		sprintf(ext_fname, "%s/%s", dir, fname);
@@ -75,6 +88,9 @@ void early_extract_zip_file(char *file, char *dir) {
 					sceIoWrite(f, read_buffer, rbytes);
 					curr_extracted_bytes += rbytes;
 					curr_file_bytes += rbytes;
+				} else {
+					ok = false;
+					break;
 				}
 				sceKernelPowerTick(SCE_KERNEL_POWER_TICK_DEFAULT);
 				vglSwapBuffers(GL_TRUE);
@@ -94,6 +110,7 @@ void early_extract_zip_file(char *file, char *dir) {
 		status = sceMsgDialogGetStatus();
 	} while (status != SCE_COMMON_DIALOG_STATUS_FINISHED);
 	sceMsgDialogTerm();
+	return ok;
 }
 
 static bool extract_psarc_dir(int dir, char *out_dir, bool cancelable, GLuint bg_tex) {
@@ -177,8 +194,15 @@ bool extract_zip_file(char *file, char *dir, bool indexing, bool cancelable) {
 	}
 	unzGoToFirstFile(zipfile);
 	FILE *f2;
-	if (indexing)
-		f2 = fopen("ux0:data/VitaDB/icons.db", "w");
+	if (indexing) {
+		char icons_db_path[288];
+		sprintf(icons_db_path, "%sicons.db", catalog_dir);
+		// icons.db is shared between vita and psp (both platforms' icons
+		// live under the same local icons/ folder) - truncating it here
+		// would wipe out whichever platform's entries aren't in this
+		// particular zip, making them look "missing" again next run.
+		f2 = fopen(icons_db_path, "a");
+	}
 	for (int zip_idx = 0; zip_idx < num_files; ++zip_idx) {
 		unzGetCurrentFileInfo(zipfile, &file_info, fname, 512, NULL, 0, NULL, 0);
 		if (indexing) {
@@ -201,6 +225,11 @@ bool extract_zip_file(char *file, char *dir, bool indexing, bool cancelable) {
 					sceIoWrite(f, read_buffer, rbytes);
 					curr_extracted_bytes += rbytes;
 					curr_file_bytes += rbytes;
+				} else {
+					sceIoClose(f);
+					unzCloseCurrentFile(zipfile);
+					unzClose(zipfile);
+					return false;
 				}
 				draw_extractor_dialog(zip_idx + 1, curr_file_bytes, curr_extracted_bytes, file_info.uncompressed_size, total_extracted_bytes, fname, num_files);
 				if (cancelable) {

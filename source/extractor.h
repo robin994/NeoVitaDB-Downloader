@@ -20,7 +20,7 @@
 #define _EXTRACTOR_H
 
 void init_read_buffer();
-void early_extract_zip_file(char *file, char *dir);
+bool early_extract_zip_file(char *file, char *dir);
 
 bool extract_psarc_file(char *file, char *out_dir, bool cancelable = false, GLuint bg_tex = 0);
 bool extract_zip_file(char *file, char *dir, bool indexing, bool cancelable = false);

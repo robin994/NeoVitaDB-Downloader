@@ -57,6 +57,8 @@ const char *format_size_str(uint64_t len) {
 
 void copy_file(const char *src, const char *dst) {
 	SceUID fs = sceIoOpen(src, SCE_O_RDONLY, 0777);
+	if (fs < 0)
+		return;
 	SceUID fd = sceIoOpen(dst, SCE_O_WRONLY | SCE_O_TRUNC | SCE_O_CREAT, 0777);
 	size_t fsize;
 	while (fsize = sceIoRead(fs, generic_mem_buffer, MEM_BUFFER_SIZE)) {
@@ -134,6 +136,31 @@ void recursive_mkdir(char *dir) {
 			p2[0] = '/';
 		} else break;
 	}
+}
+
+bool find_vpk_in_dir(const char *dir, char *out_path) {
+	SceUID d = sceIoDopen(dir);
+	if (d < 0)
+		return false;
+	SceIoDirent entry;
+	bool found = false;
+	while (!found && sceIoDread(d, &entry) > 0) {
+		if (!strcmp(entry.d_name, ".") || !strcmp(entry.d_name, ".."))
+			continue;
+		char path[512];
+		sprintf(path, "%s/%s", dir, entry.d_name);
+		if (SCE_S_ISDIR(entry.d_stat.st_mode)) {
+			found = find_vpk_in_dir(path, out_path);
+			continue;
+		}
+		size_t len = strlen(entry.d_name);
+		if (len > 4 && !strcasecmp(&entry.d_name[len - 4], ".vpk")) {
+			strcpy(out_path, path);
+			found = true;
+		}
+	}
+	sceIoDclose(d);
+	return found;
 }
 
 void populate_pspemu_path() {

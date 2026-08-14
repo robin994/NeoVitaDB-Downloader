@@ -4,7 +4,14 @@
 #include <libk/stdlib.h>
 #include <libk/stdio.h>
 
-#define DB_FILE_NAME "ux0:data/vitadb.json"
+// Must match source/catalog.h's OFFICIAL_CATALOG_BASE. This daemon is a
+// separate nostdlib binary and can't link source/catalog.cpp, so it keeps
+// its own copy of the config-read + slug logic below rather than sharing
+// runtime state with the main app - see catalog_dir()/catalog_slug().
+#define OFFICIAL_CATALOG_BASE "https://robin994.github.io/NeoVitaDB-Catalog"
+#define CATALOG_CONFIG_FILE "ux0:data/NeoVitaDB/catalog.cfg"
+#define LEGACY_DIR "ux0:data/NeoVitaDB"
+
 #define BUF_SIZE (1152 * 1024)
 #define NET_SIZE (141 * 1024)
 
@@ -101,7 +108,7 @@ void send_update_notification(char *titleid, char *id) {
 	sceShellSetUtf8(&data[0x30], fname, sceClibStrnlen(fname, 0xFFFF)); // Icon
 	sceShellSetUtf8(&data[0xBC], "An update is available for this homebrew.", sceClibStrnlen("An update is available for this homebrew.", 0xFFFF));
 	*(uint32_t *)(&data[0xC8]) = 0x20000;
-	sceShellSetUtf8(&data[0xCC], "VITADBDLD", sceClibStrnlen("VITADBDLD", 0x10));
+	sceShellSetUtf8(&data[0xCC], "NEOVITADB", sceClibStrnlen("NEOVITADB", 0x10));
 	sceShellSetUtf8(&data[0xD8], id, sceClibStrnlen(id, 0x10)); // Argument
 
 	sceLsdbSendNotification(data, 1);
@@ -166,8 +173,50 @@ void check_updates(const char *file) {
 	}
 }
 
+// Reads ux0:data/NeoVitaDB/catalog.cfg into base_out (falling back to
+// OFFICIAL_CATALOG_BASE if missing/empty), independently from
+// source/catalog.cpp's init_catalog() - see the comment at the top of this
+// file for why this can't just call that instead.
+void read_catalog_base(char *base_out, int base_size) {
+	base_out[0] = 0;
+	SceUID fd = sceIoOpen(CATALOG_CONFIG_FILE, SCE_O_RDONLY, 0777);
+	if (fd > 0) {
+		int len = sceIoRead(fd, base_out, base_size - 1);
+		sceIoClose(fd);
+		if (len < 0)
+			len = 0;
+		base_out[len] = 0;
+		while (len > 0 && (base_out[len - 1] == '\n' || base_out[len - 1] == '\r' || base_out[len - 1] == ' '))
+			base_out[--len] = 0;
+	}
+	if (base_out[0] == 0)
+		sprintf(base_out, "%s", OFFICIAL_CATALOG_BASE);
+}
+
+// Must stay identical to source/catalog.cpp's catalog_slug(): both binaries
+// need to resolve the same catalog base URL to the same per-catalog folder.
+void catalog_slug(char *dst, const char *base) {
+	if (!strncmp(base, "https://", 8))
+		base += 8;
+	else if (!strncmp(base, "http://", 7))
+		base += 7;
+	int i = 0;
+	for (; base[i] && i < 48; i++)
+		dst[i] = (base[i] == '/' || base[i] == ':') ? '_' : base[i];
+	dst[i] = 0;
+}
+
 int daemon_thread(SceSize args, void *argp) {
-	SceUID fd = sceIoOpen("ux0:data/VitaDB/daemon_blacklist.txt", SCE_O_RDONLY, 0777);
+	char catalog_base[192];
+	read_catalog_base(catalog_base, sizeof(catalog_base));
+	char slug[64];
+	catalog_slug(slug, catalog_base);
+	char catalog_dir[256];
+	sprintf(catalog_dir, LEGACY_DIR "/catalogs/%s/", slug);
+
+	char blacklist_path[288];
+	sprintf(blacklist_path, "%sdaemon_blacklist.txt", catalog_dir);
+	SceUID fd = sceIoOpen(blacklist_path, SCE_O_RDONLY, 0777);
 	if (fd > 0) {
 		uint64_t len = sceIoLseek(fd, 0, SCE_SEEK_END);
 		sceIoLseek(fd, 0, SCE_SEEK_SET);
@@ -196,13 +245,18 @@ int daemon_thread(SceSize args, void *argp) {
 	sceHttpInit(0x100000);
 	sceSslInit(0x100000);
 	taiGetModuleExportFunc("SceLsdb", 0xFFFFFFFF, 0x315B9FD6, (uintptr_t *)&sceLsdbSendNotification);
-	
+
+	char vita_list_url[224];
+	sprintf(vita_list_url, "%s/vita.json", catalog_base);
+	char db_file_path[300];
+	sprintf(db_file_path, "%sNeoVitaDB.json", catalog_dir);
+
 	for (;;) {
 		SceUID http_template = sceHttpCreateTemplate("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/58.0.3029.110 Safari/537.36", 2, 1);
-		SceUID conn = sceHttpCreateConnectionWithURL(http_template, "http://www.rinnegatamante.eu/vitadb/list_minimal_hbs_json.php", 0);
-		SceUID req = sceHttpCreateRequestWithURL(conn, 0, "http://www.rinnegatamante.eu/vitadb/list_minimal_hbs_json.php", 0);
+		SceUID conn = sceHttpCreateConnectionWithURL(http_template, vita_list_url, 0);
+		SceUID req = sceHttpCreateRequestWithURL(conn, 0, vita_list_url, 0);
 		if (!sceHttpSendRequest(req, NULL, 0)) {
-			fd = sceIoOpen(DB_FILE_NAME, SCE_O_TRUNC | SCE_O_CREAT | SCE_O_WRONLY, 0777);
+			fd = sceIoOpen(db_file_path, SCE_O_TRUNC | SCE_O_CREAT | SCE_O_WRONLY, 0777);
 			void *buffer = taipool_alloc(BUF_SIZE);
 			SceUID res;
 			do {
@@ -212,7 +266,7 @@ int daemon_thread(SceSize args, void *argp) {
 			} while(res > 0);
 			sceIoClose(fd);
 			taipool_free(buffer);
-			check_updates(DB_FILE_NAME);
+			check_updates(db_file_path);
 		}
 		sceHttpDeleteRequest(req);
 		sceHttpDeleteConnection(conn);

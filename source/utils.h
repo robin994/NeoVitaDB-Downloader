@@ -19,7 +19,7 @@
 #ifndef _UTILS_H
 #define _UTILS_H
 
-#define VERSION "2.6"
+#define VERSION "2.9.0"
 
 #define TEMP_DATA_DIR "ux0:/vdb_data"
 #define TEMP_DATA_PATH TEMP_DATA_DIR "/"
@@ -48,6 +48,7 @@ void copy_file(const char *src, const char *dst);
 void recursive_rmdir(char *path);
 void recursive_mkdir(char *dir);
 void populate_pspemu_path();
+bool find_vpk_in_dir(const char *dir, char *out_path);
 
 uint64_t get_free_storage();
 uint64_t get_total_storage();
