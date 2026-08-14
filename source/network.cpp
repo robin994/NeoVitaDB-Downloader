@@ -269,6 +269,7 @@ int appListThread(unsigned int args, void *arg) {
 
 	int attempts = 0;
 	while (downloaded_bytes < total_bytes && response_code != 304 && attempts < 10) {
+		downloaded_bytes = 0;
 		startDownload(CATALOG_VITA_LIST, timestamp);
 		attempts++;
 	}
@@ -314,6 +315,7 @@ int appPspListThread(unsigned int args, void *arg) {
 
 	int attempts = 0;
 	while (downloaded_bytes < total_bytes && response_code != 304 && attempts < 10) {
+		downloaded_bytes = 0;
 		startDownload(CATALOG_PSP_LIST, timestamp);
 		attempts++;
 	}

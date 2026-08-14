@@ -68,7 +68,7 @@ static SceUID clash_thd;
 extern char boot_params[1024];
 extern AppSelection *to_download;
 
-const char *sort_modes_apps_str[9] = {
+const char *sort_modes_apps_str[11] = {
 	"Recently Added",
 	"Recently Updated",
 	"Oldest",

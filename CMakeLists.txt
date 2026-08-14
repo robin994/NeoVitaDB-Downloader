@@ -94,6 +94,8 @@ target_link_libraries(VitaDB
 	SceHid_stub
 )
 
+set_target_properties(VitaDB PROPERTIES LINK_FLAGS "-Wl,-z,max-page-size=0x10000")
+
 add_executable(vitadb_kernel
 	kernel/main.c
 )

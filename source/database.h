@@ -54,7 +54,7 @@ enum {
 	SORT_APPS_LOWEST_SCORE
 };
 
-extern const char *sort_modes_apps_str[10];
+extern const char *sort_modes_apps_str[11];
 
 enum {
 	SORT_THEMES_A_Z,
