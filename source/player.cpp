@@ -24,9 +24,10 @@
 
 #include "network.h"
 
-#define VIDEO_BUFFERS_NUM (5)
+#define VIDEO_BUFFERS_NUM (1)
 #define FB_ALIGNMENT 0x40000
 #define ALIGN_MEM(x, align) (((x) + ((align) - 1)) & ~((align) - 1))
+#define FIRST_FRAME_TIMEOUT_US (3 * 1000 * 1000)
 
 extern "C" {
 #define SCE_AVPLAYER_STATE_READY (2)
@@ -230,7 +231,7 @@ void video_close() {
 	}
 }
 
-void video_open(const char *path) {
+bool video_open(const char *path) {
 	finished = false;
 	video_len = 0;
 	first_frame = true;
@@ -240,7 +241,7 @@ void video_open(const char *path) {
 		glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, 8, 8, 0, GL_RGBA, GL_UNSIGNED_BYTE, NULL);
 		movie_tex[i] = vglGetGxmTexture(GL_TEXTURE_2D);
 	}
-	
+
 	// Check if the supplied path is a remote video
 	is_local = strncmp(path, "http", 4);
 	if (!is_local) {
@@ -269,21 +270,53 @@ void video_open(const char *path) {
 		playerInit.fileReplacement.readOffset = video_stream_read;
 		playerInit.fileReplacement.size = video_stream_size;
 		playerInit.eventReplacement.eventCallback = video_events_handle;
-		
+
 		movie_player = sceAvPlayerInit(&playerInit);
-		sceAvPlayerAddSource(movie_player, "remote_stream.mp4"); // sceAvPlayer needs the source to end with ".mp4" for some reasons...
-		
+		int add_res = sceAvPlayerAddSource(movie_player, "remote_stream.mp4"); // sceAvPlayer needs the source to end with ".mp4" for some reasons...
+		if (add_res < 0) {
+			sceAvPlayerClose(movie_player);
+			glDeleteTextures(VIDEO_BUFFERS_NUM, movie_frame);
+			return false;
+		}
+
 		video_audio_init();
 		audio_thid = sceKernelCreateThread("video_audio_thread", video_audio_thread, 0x10000100 - 10, 0x4000, 0, 0, NULL);
 		sceKernelStartThread(audio_thid, 0, NULL);
 	} else {
 		playerInit.autoStart = GL_TRUE;
 		movie_player = sceAvPlayerInit(&playerInit);
-		sceAvPlayerAddSource(movie_player, path);
+		int add_res = sceAvPlayerAddSource(movie_player, path);
+		if (add_res < 0) {
+			sceAvPlayerClose(movie_player);
+			glDeleteTextures(VIDEO_BUFFERS_NUM, movie_frame);
+			return false;
+		}
 		sceAvPlayerSetLooping(movie_player, 1);
+
+		player_state = PLAYER_ACTIVE;
+		uint64_t wait_start = sceKernelGetProcessTimeWide();
+		bool got_frame = false;
+		while (sceKernelGetProcessTimeWide() - wait_start < FIRST_FRAME_TIMEOUT_US) {
+			if (sceAvPlayerIsActive(movie_player)) {
+				SceAvPlayerFrameInfo frame;
+				if (sceAvPlayerGetVideoData(movie_player, &frame)) {
+					got_frame = true;
+					break;
+				}
+			}
+			sceKernelDelayThread(10000);
+		}
+		if (!got_frame) {
+			player_state = PLAYER_INACTIVE;
+			sceAvPlayerClose(movie_player);
+			glDeleteTextures(VIDEO_BUFFERS_NUM, movie_frame);
+			return false;
+		}
+		return true;
 	}
-	
+
 	player_state = PLAYER_ACTIVE;
+	return true;
 }
 
 GLuint video_get_frame(int *width, int *height) {
@@ -309,7 +342,7 @@ GLuint video_get_frame(int *width, int *height) {
 			finished = true;
 		}
 	}
-	
+
 	return 0xDEADBEEF;
 }
 
