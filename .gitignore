@@ -1,2 +1,3 @@
 eboot.bin
-build
+build/
+.vscode/

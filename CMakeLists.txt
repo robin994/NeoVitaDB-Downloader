@@ -10,9 +10,9 @@ endif()
 
 project(VitaDB C CXX)
 include("${VITASDK}/share/vita.cmake" REQUIRED)
-set(VITA_APP_NAME "VitaDB Downloader")
-set(VITA_TITLEID "VITADBDLD")
-set(VITA_VERSION "01.00")
+set(VITA_APP_NAME "NeoVitaDB Downloader")
+set(VITA_TITLEID	"NEOVITADB")
+set(VITA_VERSION	"01.00")
 
 execute_process(COMMAND git describe --abbrev=6 --dirty --always
 	OUTPUT_VARIABLE GIT_HASH
@@ -23,6 +23,7 @@ set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -fno-optimize-sibling-calls -fdiagnostics-co
 set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -fno-optimize-sibling-calls -fpermissive -g -fdiagnostics-color=always -Wno-write-strings -D_GNU_SOURCE -std=c++11")
 
 add_executable(VitaDB
+	source/catalog.cpp
 	source/database.cpp
 	source/dialogs.cpp
 	source/extractor.cpp
@@ -63,6 +64,10 @@ target_link_libraries(VitaDB
 	modplug
 	FLAC
 	crypto
+	opusfile
+	opus
+	xmp
+	zstd
 	taihen_stub
 	kubridge_stub
 	SceAvPlayer_stub
@@ -88,6 +93,8 @@ target_link_libraries(VitaDB
 	SceIme_stub
 	SceHid_stub
 )
+
+set_target_properties(VitaDB PROPERTIES LINK_FLAGS "-Wl,-z,max-page-size=0x10000")
 
 add_executable(vitadb_kernel
 	kernel/main.c
@@ -154,7 +161,7 @@ vita_create_self(eboot.bin VitaDB UNSAFE)
 vita_create_self(vitadb.skprx vitadb_kernel UNSAFE CONFIG ${CMAKE_SOURCE_DIR}/kernel/exports.yml)
 vita_create_self(vitadb.suprx vitadb_user UNSAFE CONFIG ${CMAKE_SOURCE_DIR}/user/exports.yml)
 vita_create_self(vdb_daemon.suprx vitadb_daemon UNSAFE CONFIG ${CMAKE_SOURCE_DIR}/daemon/exports.yml)
-vita_create_vpk(VitaDB.vpk ${VITA_TITLEID} eboot.bin
+vita_create_vpk(NeoVitaDB.vpk ${VITA_TITLEID} eboot.bin
 	VERSION ${VITA_VERSION}
 	NAME ${VITA_APP_NAME}
 	FILE ${CMAKE_SOURCE_DIR}/livearea/icon0.png sce_sys/icon0.png
@@ -169,4 +176,5 @@ vita_create_vpk(VitaDB.vpk ${VITA_TITLEID} eboot.bin
 		${CMAKE_SOURCE_DIR}/star.png star.png
 		${CMAKE_SOURCE_DIR}/crank.png crank.png
 		${CMAKE_SOURCE_DIR}/slop.png slop.png
+		${CMAKE_SOURCE_DIR}/livearea/icon0.png icon0.png
 )

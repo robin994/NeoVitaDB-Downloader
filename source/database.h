@@ -41,6 +41,7 @@ enum {
 };
 
 enum {
+	SORT_APPS_RECENTLY_ADDED,
 	SORT_APPS_NEWEST,
 	SORT_APPS_OLDEST,
 	SORT_APPS_MOST_DOWNLOADED,
@@ -53,7 +54,7 @@ enum {
 	SORT_APPS_LOWEST_SCORE
 };
 
-extern const char *sort_modes_apps_str[10];
+extern const char *sort_modes_apps_str[11];
 
 enum {
 	SORT_THEMES_A_Z,
@@ -91,15 +92,22 @@ struct AppSelection {
 	char trailer[64];
 	char *desc;
 	char downloads[16];
+	char likes[16];
 	char size[16];
 	char data_size[16];
 	char hash[34];
 	char aux_hash[34];
 	char *requirements;
+	char data_link[128];
+	char url[256];
+	char folder[64];
+	char added[12];
 	int state;
 	float score;
 	bool trophies;
 	uint8_t ai;
+	bool trusted;
+	bool direct;
 	bool favorites;
 	bool search_filtered;
 	bool filtered;
@@ -137,15 +145,18 @@ extern bool update_detected;
 char *get_changelog(const char *file, char *id);
 
 bool populate_apps_database(const char *file, bool is_psp);
+bool populate_apps_database_vitadb_legacy(const char *file, bool is_psp);
 void populate_themes_database(const char *file);
+
+void reset_apps_database(bool is_psp);
 
 void populate_daemon_blacklist();
 void insert_daemon_blacklist(char *tid);
 void remove_daemon_blacklist(char *tid);
 
 void populate_favorites();
-void insert_favorites(char *tid);
-void remove_favorites(char *tid);
+void insert_favorites(char *tid, bool is_psp);
+void remove_favorites(char *tid, bool is_psp);
 
 void sort_apps_list(AppSelection **start, int sort_idx);
 void sort_themes_list(ThemeSelection **start, int sort_idx);

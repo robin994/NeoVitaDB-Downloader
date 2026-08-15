@@ -24,8 +24,12 @@
 #include <string.h>
 #include <vitasdk.h>
 #include <vitaGL.h>
+#include "catalog.h"
 #include "dialogs.h"
 #include "network.h"
+#include "utils.h"
+
+#define NEOVITADB_USER_AGENT "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/58.0.3029.110 Safari/537.36"
 
 //#define DEBUG_NET // Uncomment this to enable downloader debugging
 
@@ -59,7 +63,7 @@ static size_t write_cb(void *ptr, size_t size, size_t nmemb, void *stream) {
 			return 0;
 		}
 	}
-	if (total_bytes > MEM_BUFFER_SIZE || fh >= 0) {
+	if (total_bytes > MEM_BUFFER_SIZE || downloaded_bytes + nmemb > MEM_BUFFER_SIZE || fh >= 0) {
 		if (fh < 0)
 			fh = sceIoOpen(TEMP_DOWNLOAD_NAME, SCE_O_WRONLY | SCE_O_TRUNC | SCE_O_CREAT, 0777);
 		sceIoWrite(fh, ptr, nmemb);
@@ -176,11 +180,13 @@ static void startDownload(const char *url, time_t timestamp = 0) {
 	curl_easy_reset(curl_handle);
 	curl_easy_setopt(curl_handle, CURLOPT_URL, url);
 	curl_easy_setopt(curl_handle, CURLOPT_HTTPGET, 1L);
-	curl_easy_setopt(curl_handle, CURLOPT_USERAGENT, "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/58.0.3029.110 Safari/537.36");
+	curl_easy_setopt(curl_handle, CURLOPT_USERAGENT, NEOVITADB_USER_AGENT);
 	curl_easy_setopt(curl_handle, CURLOPT_SSL_VERIFYHOST, 0L);
 	curl_easy_setopt(curl_handle, CURLOPT_SSL_VERIFYPEER, 0L);
 	curl_easy_setopt(curl_handle, CURLOPT_SSLVERSION, CURL_SSLVERSION_TLSv1_2);
 	curl_easy_setopt(curl_handle, CURLOPT_CONNECTTIMEOUT, 10L);
+	curl_easy_setopt(curl_handle, CURLOPT_LOW_SPEED_LIMIT, 1L);
+	curl_easy_setopt(curl_handle, CURLOPT_LOW_SPEED_TIME, 30L);
 	curl_easy_setopt(curl_handle, CURLOPT_FOLLOWLOCATION, 1L);
 	curl_easy_setopt(curl_handle, CURLOPT_NOPROGRESS, 1L);
 	if (timestamp > 0) {
@@ -196,24 +202,27 @@ static void startDownload(const char *url, time_t timestamp = 0) {
 	struct curl_slist *headerchunk = NULL;
 	headerchunk = curl_slist_append(headerchunk, "Accept: */*");
 	headerchunk = curl_slist_append(headerchunk, "Content-Type: application/json");
-	headerchunk = curl_slist_append(headerchunk, "User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/58.0.3029.110 Safari/537.36");
+	headerchunk = curl_slist_append(headerchunk, "User-Agent: " NEOVITADB_USER_AGENT);
 	headerchunk = curl_slist_append(headerchunk, "Content-Length: 0");
 	curl_easy_setopt(curl_handle, CURLOPT_HTTPHEADER, headerchunk);
 	CURLcode res = curl_easy_perform(curl_handle);
 	if (res == CURLE_OK) {
 		curl_easy_getinfo(curl_handle, CURLINFO_RESPONSE_CODE, &response_code);
 	}
+	curl_slist_free_all(headerchunk);
 }
 
 static void startStream(const char *url) {
 	curl_easy_reset(curl_handle);
 	curl_easy_setopt(curl_handle, CURLOPT_URL, url);
 	curl_easy_setopt(curl_handle, CURLOPT_HTTPGET, 1L);
-	curl_easy_setopt(curl_handle, CURLOPT_USERAGENT, "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/58.0.3029.110 Safari/537.36");
+	curl_easy_setopt(curl_handle, CURLOPT_USERAGENT, NEOVITADB_USER_AGENT);
 	curl_easy_setopt(curl_handle, CURLOPT_SSL_VERIFYHOST, 0L);
 	curl_easy_setopt(curl_handle, CURLOPT_SSL_VERIFYPEER, 0L);
 	curl_easy_setopt(curl_handle, CURLOPT_SSLVERSION, CURL_SSLVERSION_TLSv1_2);
 	curl_easy_setopt(curl_handle, CURLOPT_CONNECTTIMEOUT, 10L);
+	curl_easy_setopt(curl_handle, CURLOPT_LOW_SPEED_LIMIT, 1L);
+	curl_easy_setopt(curl_handle, CURLOPT_LOW_SPEED_TIME, 30L);
 	curl_easy_setopt(curl_handle, CURLOPT_FOLLOWLOCATION, 1L);
 	curl_easy_setopt(curl_handle, CURLOPT_NOPROGRESS, 1L);
 	curl_easy_setopt(curl_handle, CURLOPT_WRITEFUNCTION, write_video_cb);
@@ -225,10 +234,11 @@ static void startStream(const char *url) {
 	struct curl_slist *headerchunk = NULL;
 	headerchunk = curl_slist_append(headerchunk, "Accept: */*");
 	headerchunk = curl_slist_append(headerchunk, "Content-Type: application/json");
-	headerchunk = curl_slist_append(headerchunk, "User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/58.0.3029.110 Safari/537.36");
+	headerchunk = curl_slist_append(headerchunk, "User-Agent: " NEOVITADB_USER_AGENT);
 	headerchunk = curl_slist_append(headerchunk, "Content-Length: 0");
 	curl_easy_setopt(curl_handle, CURLOPT_HTTPHEADER, headerchunk);
 	curl_easy_perform(curl_handle);
+	curl_slist_free_all(headerchunk);
 }
 
 int appListThread(unsigned int args, void *arg) {
@@ -237,13 +247,18 @@ int appListThread(unsigned int args, void *arg) {
 	curl_handle = curl_easy_init();
 	downloader_pass = 1;
 	downloaded_bytes = 0;
+	response_code = 0;
 	fh = -1;
 	time_t timestamp = 0;
 
+	char apps_json_path[288], apps_stamp_path[288];
+	sprintf(apps_json_path, "%sapps.json", catalog_dir);
+	sprintf(apps_stamp_path, "%sapps.stamp", catalog_dir);
+
 	SceIoStat stat;
-	if (sceIoGetstat("ux0:data/VitaDB/apps.json", &stat) >= 0) {
+	if (sceIoGetstat(apps_json_path, &stat) >= 0) {
 		total_bytes = stat.st_size;
-		SceUID fh2 = sceIoOpen("ux0:data/VitaDB/apps.stamp", SCE_O_RDONLY, 0777);
+		SceUID fh2 = sceIoOpen(apps_stamp_path, SCE_O_RDONLY, 0777);
 		if (fh2 > 0) {
 			sceIoRead(fh2, &timestamp, sizeof(time_t));
 			sceIoClose(fh2);
@@ -252,15 +267,18 @@ int appListThread(unsigned int args, void *arg) {
 		total_bytes = 12 * 1024;
 	}
 
-	while (downloaded_bytes < total_bytes && response_code != 304) {
-		startDownload("https://www.rinnegatamante.eu/vitadb/list_hbs_json.php", timestamp);
+	int attempts = 0;
+	while (downloaded_bytes < total_bytes && response_code != 304 && attempts < 10) {
+		downloaded_bytes = 0;
+		startDownload(CATALOG_VITA_LIST, timestamp);
+		attempts++;
 	}
 
-	if (downloaded_bytes > 12 * 1024 && response_code != 304) {
-		fh = sceIoOpen("ux0:data/VitaDB/apps.json", SCE_O_WRONLY | SCE_O_TRUNC | SCE_O_CREAT, 0777);
+	if (downloaded_bytes > 0 && (response_code == 200 || response_code == 206)) {
+		fh = sceIoOpen(apps_json_path, SCE_O_WRONLY | SCE_O_TRUNC | SCE_O_CREAT, 0777);
 		sceIoWrite(fh, generic_mem_buffer, downloaded_bytes);
 		sceIoClose(fh);
-		fh = sceIoOpen("ux0:data/VitaDB/apps.stamp", SCE_O_WRONLY | SCE_O_TRUNC | SCE_O_CREAT, 0777);
+		fh = sceIoOpen(apps_stamp_path, SCE_O_WRONLY | SCE_O_TRUNC | SCE_O_CREAT, 0777);
 		sceIoWrite(fh, &download_tstamp, sizeof(time_t));
 		sceIoClose(fh);
 	}
@@ -275,13 +293,18 @@ int appPspListThread(unsigned int args, void *arg) {
 	curl_handle = curl_easy_init();
 	downloader_pass = 1;
 	downloaded_bytes = 0;
+	response_code = 0;
 	fh = -1;
 	time_t timestamp = 0;
 
+	char psp_apps_json_path[288], psp_apps_stamp_path[288];
+	sprintf(psp_apps_json_path, "%spsp_apps.json", catalog_dir);
+	sprintf(psp_apps_stamp_path, "%spsp_apps.stamp", catalog_dir);
+
 	SceIoStat stat;
-	if (sceIoGetstat("ux0:data/VitaDB/psp_apps.json", &stat) >= 0) {
+	if (sceIoGetstat(psp_apps_json_path, &stat) >= 0) {
 		total_bytes = stat.st_size;
-		SceUID fh2 = sceIoOpen("ux0:data/VitaDB/psp_apps.stamp", SCE_O_RDONLY, 0777);
+		SceUID fh2 = sceIoOpen(psp_apps_stamp_path, SCE_O_RDONLY, 0777);
 		if (fh2 > 0) {
 			sceIoRead(fh2, &timestamp, sizeof(time_t));
 			sceIoClose(fh2);
@@ -290,15 +313,18 @@ int appPspListThread(unsigned int args, void *arg) {
 		total_bytes = 12 * 1024;
 	}
 
-	while (downloaded_bytes < total_bytes && response_code != 304) {
-		startDownload("https://www.rinnegatamante.eu/vitadb/list_psp_hbs_json.php", timestamp);
+	int attempts = 0;
+	while (downloaded_bytes < total_bytes && response_code != 304 && attempts < 10) {
+		downloaded_bytes = 0;
+		startDownload(CATALOG_PSP_LIST, timestamp);
+		attempts++;
 	}
 
-	if (downloaded_bytes > 12 * 1024 && response_code != 304) {
-		fh = sceIoOpen("ux0:data/VitaDB/psp_apps.json", SCE_O_WRONLY | SCE_O_TRUNC | SCE_O_CREAT, 0777);
+	if (downloaded_bytes > 0 && (response_code == 200 || response_code == 206)) {
+		fh = sceIoOpen(psp_apps_json_path, SCE_O_WRONLY | SCE_O_TRUNC | SCE_O_CREAT, 0777);
 		sceIoWrite(fh, generic_mem_buffer, downloaded_bytes);
 		sceIoClose(fh);
-		fh = sceIoOpen("ux0:data/VitaDB/psp_apps.stamp", SCE_O_WRONLY | SCE_O_TRUNC | SCE_O_CREAT, 0777);
+		fh = sceIoOpen(psp_apps_stamp_path, SCE_O_WRONLY | SCE_O_TRUNC | SCE_O_CREAT, 0777);
 		sceIoWrite(fh, &download_tstamp, sizeof(time_t));
 		sceIoClose(fh);
 	}
@@ -328,8 +354,10 @@ int downloadMemThread(unsigned int args, void *arg) {
 	downloaded_bytes = 0;
 	total_bytes = 20;
 	startDownload(final_url);
-	while (downloaded_bytes < total_bytes) {
+	int attempts = 0;
+	while (downloaded_bytes < total_bytes && attempts < 10) {
 		startDownload(final_url);
+		attempts++;
 	}
 	downloaded_bytes = total_bytes;
 	generic_mem_buffer[downloaded_bytes] = 0;
@@ -361,11 +389,15 @@ int streamMemThread(unsigned int args, void *arg) {
 	video_decoder_idx = 0;
 	total_bytes = 20;
 	startStream(final_url);
-	while (downloaded_bytes < total_bytes) {
+	{
+	int attempts = 0;
+	while (downloaded_bytes < total_bytes && attempts < 10) {
 		if (is_canceled) {
 			goto ABORT_DOWNLOAD;
 		}
 		startStream(final_url);
+		attempts++;
+	}
 	}
 ABORT_DOWNLOAD:
 	downloaded_bytes = total_bytes;
@@ -394,11 +426,13 @@ int downloadThread(unsigned int args, void *arg) {
 	downloaded_bytes = 0;
 	total_bytes = 180;
 	startDownload(final_url);
-	while (downloaded_bytes < total_bytes) {
+	int attempts = 0;
+	while (downloaded_bytes < total_bytes && attempts < 10) {
 		if (is_cancelable && is_canceled) {
 			goto ABORT_DOWNLOAD;
 		}
 		startDownload(final_url);
+		attempts++;
 	}
 	if (downloaded_bytes > 180 && total_bytes <= MEM_BUFFER_SIZE) {
 		fh = sceIoOpen(TEMP_DOWNLOAD_NAME, SCE_O_WRONLY | SCE_O_TRUNC | SCE_O_CREAT, 0777);
@@ -418,7 +452,7 @@ bool download_file(char *url, char *text, bool cancelable, int custom_index, int
 	info.size = sizeof(SceKernelThreadInfo);
 	int res = 0;
 	SceUID thd = sceKernelCreateThread("Generic Downloader", &downloadThread, 0x10000100, 0x100000, 0, 0, NULL);
-	sprintf((char *)generic_url, url);
+	sprintf((char *)generic_url, "%s", url);
 	sceKernelStartThread(thd, 0, NULL);
 	do {
 		int pass_idx = custom_index >= 0 ? custom_index : downloader_pass;
@@ -426,6 +460,7 @@ bool download_file(char *url, char *text, bool cancelable, int custom_index, int
 		draw_downloader_dialog(pass_idx, downloaded_bytes, total_bytes, text, num_passes, true, bg_tex);
 		res = sceKernelGetThreadInfo(thd, &info);
 	} while (info.status <= SCE_THREAD_DORMANT && res >= 0);
+	sceKernelWaitThreadEnd(thd, NULL, NULL);
 	
 	if (is_cancelable) {
 		return !is_canceled;
@@ -441,11 +476,12 @@ void silent_download(char *url) {
 	info.size = sizeof(SceKernelThreadInfo);
 	int res = 0;
 	SceUID thd = sceKernelCreateThread("Generic Downloader", &downloadMemThread, 0x10000100, 0x100000, 0, 0, NULL);
-	sprintf((char *)generic_url, url);
+	sprintf((char *)generic_url, "%s", url);
 	sceKernelStartThread(thd, 0, NULL);
 	do {
 		res = sceKernelGetThreadInfo(thd, &info);
 	} while (info.status <= SCE_THREAD_DORMANT && res >= 0);
+	sceKernelWaitThreadEnd(thd, NULL, NULL);
 }
 
 void early_download_file(char *url, char *text) {
@@ -455,7 +491,7 @@ void early_download_file(char *url, char *text) {
 	info.size = sizeof(SceKernelThreadInfo);
 	int res = 0;
 	SceUID thd = sceKernelCreateThread("Generic Downloader", &downloadThread, 0x10000100, 0x100000, 0, 0, NULL);
-	sprintf((char *)generic_url, url);
+	sprintf((char *)generic_url, "%s", url);
 	sceKernelStartThread(thd, 0, NULL);
 	init_progressbar_dialog(text);
 	do {
@@ -464,6 +500,7 @@ void early_download_file(char *url, char *text) {
 		vglSwapBuffers(GL_TRUE);
 		res = sceKernelGetThreadInfo(thd, &info);
 	} while (info.status <= SCE_THREAD_DORMANT && res >= 0);
+	sceKernelWaitThreadEnd(thd, NULL, NULL);
 	sceMsgDialogClose();
 	int status = sceMsgDialogGetStatus();
 	do {
@@ -477,6 +514,6 @@ void stream_video(char *url) {
 	is_canceled = false;
 	is_cancelable = true;
 	video_stream_thid = sceKernelCreateThread("Video Streamer", &streamMemThread, 0x10000100, 0x100000, 0, 0, NULL);
-	sprintf((char *)generic_url, url);
+	sprintf((char *)generic_url, "%s", url);
 	sceKernelStartThread(video_stream_thid, 0, NULL);
 }

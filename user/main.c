@@ -9,7 +9,7 @@ static tai_hook_ref_t sceClibPrintf_ref, sceIoRemove_ref;
 
 int sceClibPrintf_patched(const char *txt, ...) {
 	if (strncmp(txt, "[%4s/%6s: %-26s] ***********************************************", 64) == 0) {
-		sceAppMgrLaunchAppByName(0x60000, "VITADBDLD", "");
+		sceAppMgrLaunchAppByName(0x60000, "NEOVITADB", "");
 	}
 	return 0;
 }
@@ -17,7 +17,7 @@ int sceClibPrintf_patched(const char *txt, ...) {
 int sceIoRemove_patched(const char *name) {
 	if (strncmp(name, "ux0:/ShaRKF00D/libshacccg.suprx", 31) == 0) {
 		TAI_CONTINUE(int, sceIoRemove_ref, name);
-		sceAppMgrLaunchAppByName(0x60000, "VITADBDLD", "");
+		sceAppMgrLaunchAppByName(0x60000, "NEOVITADB", "");
 	}
 	return 0;
 }

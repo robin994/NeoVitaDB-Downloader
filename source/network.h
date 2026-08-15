@@ -22,7 +22,7 @@
 #define MEM_BUFFER_SIZE (32 * 1024 * 1024)
 #define VIDEO_DECODER_BUFFER_SIZE (MEM_BUFFER_SIZE / 8)
 
-#define TEMP_DOWNLOAD_NAME "ux0:data/VitaDB/temp.tmp"
+#define TEMP_DOWNLOAD_NAME "ux0:data/NeoVitaDB/temp.tmp"
 
 extern uint8_t *generic_mem_buffer;
 extern volatile uint64_t total_bytes;
