@@ -112,6 +112,7 @@ struct AppSelection {
 	bool search_filtered;
 	bool filtered;
 	uint8_t blacklisted;
+	bool has_data;
 	AppSelection *next_clash;
 	AppSelection *prev_clash;
 	AppSelection *next;

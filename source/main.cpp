@@ -248,10 +248,10 @@ enum {
 	FILTER_VITA_APPS_EMULATOR,
 	FILTER_VITA_APPS_FAVORITES,
 	FILTER_VITA_APPS_NON_FREEWARE,
+	FILTER_VITA_APPS_TROPHY,
 	FILTER_VITA_APPS_NOT_INSTALLED,
 	FILTER_VITA_APPS_OUTDATED,
 	FILTER_VITA_APPS_INSTALLED,
-	FILTER_VITA_APPS_TROPHY,
 	FILTER_VITA_APPS_AI_ASSISTED,
 	FILTER_VITA_APPS_VIBECODED,
 	FILTER_VITA_APPS_NOT_TRUSTED,
@@ -265,10 +265,10 @@ const char *filter_vita_apps_modes[] = {
 	"Emulators",
 	"Favorites Apps",
 	"Non Freeware Apps",
+	"Apps with Trophies",
 	"Not Installed Apps",
 	"Outdated Apps",
 	"Installed Apps",
-	"Apps with Trophies",
 	"AI Assisted Apps",
 	"Vibecoded Apps",
 	"Not Trusted Apps",
@@ -834,7 +834,17 @@ typedef struct {
 	uint32_t size;
 } entry;
 
-int main(int argc, char *argv[]) {
+int vdb_main(unsigned int argc, void* argv);
+
+int main(int argc, char **argv) {
+	SceUID main_thread = sceKernelCreateThread("VitaDB Downloader", vdb_main, 0x40, 0x100000, 0, 0, NULL);
+	if (main_thread >= 0){
+		sceKernelStartThread(main_thread, 0, NULL);
+	}
+	return sceKernelExitDeleteThread(0);
+}
+
+int vdb_main(unsigned int argc, void* argv) {
 #if 0
 	sceSysmoduleLoadModule(SCE_SYSMODULE_RAZOR_CAPTURE);
 #endif
@@ -1242,6 +1252,7 @@ extract_libshacccg:
 	bool is_app_hovered;
 	float right_len = 0.0f;
 	float text_diff_len = 0.0f;
+	float text_diff_len2 = 0.0f;
 	uint32_t oldpad;
 	int filtered_entries;
 	AppSelection *decrement_stack[4096];
@@ -1367,10 +1378,17 @@ extract_libshacccg:
 		}
 		ImGui::PopItemWidth();
 		ImGui::AlignTextToFramePadding();
-		if (text_diff_len == 0.0f)
+		if (text_diff_len == 0.0f) {
 			text_diff_len = ImGui::CalcTextSize("Search: ").x - ImGui::CalcTextSize("Filter: ").x;
-		ImGui::SetCursorPosX(ImGui::GetCursorPosX() + text_diff_len);
-		ImGui::Text("Filter: ");
+			text_diff_len2 = ImGui::CalcTextSize("Search: ").x - ImGui::CalcTextSize("Filters: ").x;
+		}
+		if (mode_idx == MODE_VITA_HBS || mode_idx == MODE_PSP_HBS) {
+			ImGui::SetCursorPosX(ImGui::GetCursorPosX() + text_diff_len2);
+			ImGui::Text("Filters: ");
+		} else {
+			ImGui::SetCursorPosX(ImGui::GetCursorPosX() + text_diff_len);
+			ImGui::Text("Filter: ");
+		}
 		ImGui::SameLine();
 		ImGui::PushItemWidth(190.0f);
 		if (mode_idx == MODE_THEMES) {
@@ -1395,6 +1413,8 @@ extract_libshacccg:
 			sprintf(active_filters_str, "%d active", active_filters);
 			if (ImGui::BeginCombo("##combo", active_filters_str)) {
 				for (int n = 0; n < sizeof(filter_vita_apps_modes) / sizeof(*filter_vita_apps_modes); n++) {
+					if (n == FILTER_VITA_APPS_FAVORITES || n == FILTER_VITA_APPS_NOT_INSTALLED || n == FILTER_VITA_APPS_AI_ASSISTED)
+						ImGui::Separator();
 					if (ImGui::Checkbox(filter_vita_apps_modes[n], &filter_vita_apps_states[n])) {
 						filters_dirty = true;
 					}
@@ -1412,6 +1432,8 @@ extract_libshacccg:
 			sprintf(active_filters_str, "%d active", active_filters);
 			if (ImGui::BeginCombo("##combo", active_filters_str)) {
 				for (int n = 0; n < sizeof(filter_psp_apps_modes) / sizeof(*filter_psp_apps_modes); n++) {
+					if (n == FILTER_PSP_APPS_FAVORITES || n == FILTER_PSP_APPS_NOT_INSTALLED || n == FILTER_PSP_APPS_AI_ASSISTED)
+						ImGui::Separator();
 					if (ImGui::Checkbox(filter_psp_apps_modes[n], &filter_psp_apps_states[n])) {
 						filters_dirty = true;
 					}
@@ -1571,6 +1593,7 @@ extract_libshacccg:
 					}
 					if (ImGui::Button(button_label, ImVec2(-1.0f, 0.0f))) {
 						to_download = g;
+						restore_app_focus = g;
 					}
 					if (ImGui::IsItemHovered()) {
 						is_app_hovered = true;
@@ -1626,7 +1649,9 @@ extract_libshacccg:
 					}
 					float x_offs = 8.0f;
 					bool reset_cursor = false;
+					float next_row;
 					if (g->ai) {
+						next_row = ImGui::GetCursorPosY();
 						ImGui::SetCursorPosY(y - 2.0f);
 						ImGui::Image(g->ai == 1 ? (void*)crank_icon : (void*)slop_icon, ImVec2(20, 20));
 						reset_cursor = true;
@@ -1635,6 +1660,7 @@ extract_libshacccg:
 					}
 					if (g->trophies) {
 						if (!reset_cursor) {
+							next_row = ImGui::GetCursorPosY();
 							ImGui::SetCursorPosY(y - 2.0f);
 						}
 						reset_cursor = true;
@@ -1644,6 +1670,7 @@ extract_libshacccg:
 					}
 					if (g->favorites) {
 						if (!reset_cursor) {
+							next_row = ImGui::GetCursorPosY();
 							ImGui::SetCursorPosY(y - 2.0f);
 						}
 						reset_cursor = true;
@@ -1653,6 +1680,7 @@ extract_libshacccg:
 					if (reset_cursor) {
 						ImGui::SetCursorPos(ImVec2(x_offs, y));
 						ImGui::Text(g->name);
+						ImGui::SetCursorPosY(next_row);
 					}
 					filtered_entries++;
 				}
@@ -1727,7 +1755,7 @@ extract_libshacccg:
 				char size_str[64], size_str2[64] = {};
 				char *dummy;
 				uint64_t sz;
-				if (strlen(hovered->data_link) > 5) {
+				if (hovered->has_data) {
 					sz = strtoull(hovered->size, &dummy, 10);
 					uint64_t sz2 = strtoull(hovered->data_size, &dummy, 10);
 					sprintf(size_str, "%s: %.2f %s", mode_idx == MODE_VITA_HBS ? "VPK" : "App", format_size(sz), format_size_str(sz));
@@ -2257,13 +2285,16 @@ extract_libshacccg:
 			init_interactive_ime_dialog("Insert search term", app_name_filter);
 			go_to_top = true;
 		} else if (pad.buttons & SCE_CTRL_SQUARE && !(oldpad & SCE_CTRL_SQUARE) && !trailer_feature && !screenshots_feature && !show_requirements && !trophies_feature && !show_changelog && !extra_menu_invoked) {
-			if (mode_idx == MODE_THEMES)
-				filter_idx = (filter_idx + 1) % (sizeof(filter_themes_modes) / sizeof(*filter_themes_modes));
-			else if (mode_idx == MODE_VITA_HBS)
-				filter_idx = (filter_idx + 1) % (sizeof(filter_vita_apps_modes) / sizeof(*filter_vita_apps_modes));
-			else
-				filter_idx = (filter_idx + 1) % (sizeof(filter_psp_apps_modes) / sizeof(*filter_psp_apps_modes));
-			go_to_top = true;
+			if (mode_idx == MODE_VITA_HBS || mode_idx == MODE_PSP_HBS) {
+				if (hovered) {
+					if (hovered->favorites) {
+						remove_favorites(hovered->id);
+					} else {
+						insert_favorites(hovered->id);
+					}
+					hovered->favorites = !hovered->favorites;
+				}
+			}
 		}
 		oldpad = pad.buttons;
 		bool anti_burn_in_set_up = false;
@@ -2479,7 +2510,7 @@ extract_libshacccg:
 				}
 				
 				bool downloading_data_files = false;
-				if (strlen(to_download->data_link) > 5) {
+				if (to_download->has_data) {
 					setup_anti_burn_in();
 					init_interactive_msg_dialog("This homebrew also has data files. Do you wish to install them as well?");
 					while (sceMsgDialogGetStatus() != SCE_COMMON_DIALOG_STATUS_FINISHED) {
@@ -2506,7 +2537,8 @@ extract_libshacccg:
 							sceMsgDialogTerm();
 							continue;
 						}
-						if (!download_file(to_download->data_link, "Downloading data files", true, -1, -1, anti_burn_in_texture)) {
+						sprintf(download_link, "https://www.rinnegatamante.eu/vitadb/get_psarc_data.php?id=%s", to_download->id);
+						if (!download_file(download_link, "Downloading data files", true, -1, -1, anti_burn_in_texture)) {
 							to_download = nullptr;
 							sceIoRemove(TEMP_DOWNLOAD_NAME);
 							continue;
@@ -3012,4 +3044,6 @@ skip_install:
 		}
 		sceMsgDialogTerm();
 	}
+	
+	return 0;
 }

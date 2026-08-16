@@ -29,6 +29,18 @@ NeoVitaDB Downloader is a PSVita/PSTV homebrew client, a fork of Rinnegatamante'
 - Support for PSP homebrews.
 - Daemon support for homebrews update check in background during normal console usage.
 
+## Controls (while navigating)
+- Cross: Select option / Install application
+- Circle: Go to the top of the list
+- Dpad: Change Selection (Left / Right = Fast scrolling)
+- Left Analog: Scroll the visual scrollbar of the list
+- Triangle: Star a search
+- L Trigger: Change between categories (Vita Homebrews, PSP Homebrews, VitaDB Downloader Themes)
+- R Trigger: Change sorting method
+- Start: Show screenshots/video for the selected application
+- Select: Open extra options for the selected application
+- Square: Add/Remove application from Favorites
+
 ## Using a Custom Catalog
 By default, NeoVitaDB Downloader fetches its app lists, icons, screenshots and trophies from the
 official [NeoVitaDB-Catalog](https://github.com/robin994/NeoVitaDB-Catalog). A dropdown next to
@@ -261,6 +273,16 @@ backend that VitaDB Downloader relied on shut down.
 - Fixed a potential crash on first boot on systems without an existing `tai/config.txt` (e.g.
   Vita3K).
 
+### v.2.7
+- Added separators between filters listing to make categories of filters clearly distinguishable.
+- Fixed a bug causing nightly builds powered by the recent CI support program in VitaDB to have broken Data Files downloads.
+- Reduced memory usage of the whole application.
+- Made so that pressing Square button will mark/unmark a homebrew as Favorite.
+- Fixed a crash due to stack overflow in rare circumstances.
+- Fixed a bug causing visual loss of selected application after performing an install from the main listing window.
+- Fixed a visual bug causing entries with icons in the listing to slightly misalign the list rendering.
+- Change the "Filter:" text to "Filters:" when listing homebrews to reflect the change to stackable filters.
+
 ### v.2.6
 - Added distinction between vibecoded and AI assisted apps: now they will use different icons.
 - Made so that filters for PSP and PSVita homebrews are now stackable: this will allow for more granular researches in the database.
@@ -448,6 +470,9 @@ backend that VitaDB Downloader relied on shut down.
 - Fixed a bug causing selected app icon to get corrupted temporarily after installing an app.
 - Added background music (You can disable it or change the track by removing/replacing ux0:data/NeoVitaDB/bg.ogg)
 - Fixed a bug causing selected app to change randomly when changing sort mode.
+
+## Required vitaGL flags
+`make PHYCONT_ON_DEMAND=1 NO_DEBUG=1 ENABLE_LEGACY_PIPELINE=1 NO_SPLASHSCREEN=1 install`
 
 ## Credits
 - noname120 for the code related to head.bin generation.
