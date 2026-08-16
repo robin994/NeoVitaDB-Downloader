@@ -2288,9 +2288,9 @@ extract_libshacccg:
 			if (mode_idx == MODE_VITA_HBS || mode_idx == MODE_PSP_HBS) {
 				if (hovered) {
 					if (hovered->favorites) {
-						remove_favorites(hovered->id);
+						remove_favorites(hovered->id, mode_idx == MODE_PSP_HBS);
 					} else {
-						insert_favorites(hovered->id);
+						insert_favorites(hovered->id, mode_idx == MODE_PSP_HBS);
 					}
 					hovered->favorites = !hovered->favorites;
 				}
