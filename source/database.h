@@ -37,7 +37,8 @@ enum {
 enum {
 	APP_HUMAN_MADE,
 	APP_AI_ASSISTED,
-	APP_VIBECODED
+	APP_VIBECODED,
+	APP_TRUSTED
 };
 
 enum {

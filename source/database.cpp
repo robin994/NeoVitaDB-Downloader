@@ -288,6 +288,7 @@ bool populate_apps_database(const char *file, bool is_psp) {
 		}
 		bool has_likes_field = strstr(buffer, "\"likes\":") != nullptr;
 		bool has_score_field = strstr(buffer, "\"score\":") != nullptr;
+		bool has_ai_assisted_field = strstr(buffer, "\"ai_assisted\":") != nullptr;
 		char *ptr = buffer;
 		char *end, *end2;
 		std::vector<std::string> new_favorites;
@@ -315,7 +316,8 @@ bool populate_apps_database(const char *file, bool is_psp) {
 			ptr = get_value_from_json(node->type, ptr, "type", nullptr);
 			ptr = get_value_from_json(node->id, ptr, "id", nullptr);
 			if (!strcmp(node->id, SELF_CATALOG_ID) && strlen(boot_params) == 0) { // NeoVitaDB Downloader, check if newer than running version
-				char *catalog_ver = &version[2]; // skip the "v." tag prefix, e.g. "v.2.6" -> "2.6"
+				char *catalog_ver = version;
+				while (*catalog_ver && (*catalog_ver < '0' || *catalog_ver > '9')) catalog_ver++; // skip the tag prefix, e.g. "v2.9.0" -> "2.9.0", whatever its length
 				char *catalog_dot = strchr(catalog_ver, '.');
 				char *local_dot = strchr(VERSION, '.');
 				if (catalog_dot && local_dot) {
@@ -415,7 +417,7 @@ bool populate_apps_database(const char *file, bool is_psp) {
 			ptr = get_value_from_json(smalldata, ptr, "trophies", nullptr);
 			node->trophies = atoi(smalldata);
 			ptr = get_value_from_json(smalldata, ptr, "ai", nullptr);
-			node->ai = atoi(smalldata);
+			bool is_vibecoded = atoi(smalldata) != 0;
 			if (!is_psp && has_score_field) {
 				ptr = get_value_from_json(smalldata, ptr, "score", nullptr);
 				node->score = atof(smalldata);
@@ -432,6 +434,14 @@ bool populate_apps_database(const char *file, bool is_psp) {
 				ptr = get_value_from_json(node->likes, ptr, "likes", nullptr);
 			} else {
 				strcpy(node->likes, "0");
+			}
+			if (is_vibecoded) {
+				node->ai = APP_VIBECODED;
+			} else if (has_ai_assisted_field) {
+				ptr = get_value_from_json(smalldata, ptr, "ai_assisted", nullptr);
+				node->ai = atoi(smalldata) ? APP_AI_ASSISTED : APP_HUMAN_MADE;
+			} else {
+				node->ai = APP_HUMAN_MADE;
 			}
 			if (is_psp) {
 				if (node->folder[0]) {
@@ -626,7 +636,8 @@ bool populate_apps_database_vitadb_legacy(const char *file, bool is_psp) {
 			node->trophies = atoi(smalldata);
 			// "tags" skipped, unused by the client.
 			ptr = get_value_from_json(smalldata, ptr, "ai", nullptr);
-			node->ai = atoi(smalldata);
+			// This source has no ai_assisted distinction, only ai.
+			node->ai = atoi(smalldata) ? APP_VIBECODED : APP_HUMAN_MADE;
 			// "score" skipped - no on-device equivalent for this source.
 			ptr = get_value_from_json(node->url, ptr, "url", nullptr);
 			ptr = get_value_from_json(node->data_link, ptr, "data", nullptr);

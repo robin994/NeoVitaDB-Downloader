@@ -386,16 +386,19 @@ bool filterVitaApps(AppSelection *p) {
 				}
 				break;
 			case FILTER_VITA_APPS_VIBECODED:
-				if (p->ai == APP_VIBECODED)
-					return true;
-				break;	
+				if (p->ai == APP_VIBECODED) {
+					filter_ret(true)
+				}
+				break;
 			case FILTER_VITA_APPS_NOT_TRUSTED:
-				if (!p->trusted)
-					return true;
+				if (!p->trusted) {
+					filter_ret(true)
+				}
 				break;
 			case FILTER_VITA_APPS_TRUSTED:
-				if (p->trusted)
-					return true;
+				if (p->trusted) {
+					filter_ret(true)
+				}
 				break;
 			}
 		}
@@ -459,12 +462,14 @@ bool filterPspApps(AppSelection *p) {
 				}
 				break;				
 			case FILTER_PSP_APPS_NOT_TRUSTED:
-				if (!p->trusted)
-					return true;
+				if (!p->trusted) {
+					filter_ret(true)
+				}
 				break;
 			case FILTER_PSP_APPS_TRUSTED:
-				if (p->trusted)
-					return true;
+				if (p->trusted) {
+					filter_ret(true)
+				}
 				break;
 			}
 		}
@@ -3028,14 +3033,30 @@ skip_install:
 				sceMsgDialogTerm();
 				recursive_rmdir(TEMP_INSTALL_DIR);
 			}
-		} else { // VitaDB Downloader auto-updater
+		} else { // NeoVitaDB Downloader auto-updater
 			download_file(to_download->url, "Downloading update");
-			extract_psarc_file(TEMP_DOWNLOAD_NAME, "ux0:app/NEOVITADB", false);
+			uint32_t header;
+			SceUID hf = sceIoOpen(TEMP_DOWNLOAD_NAME, SCE_O_RDONLY, 0777);
+			sceIoRead(hf, &header, 4);
+			sceIoClose(hf);
+			bool extract_finished;
+			if (header == 0x52415350) // PSARC
+				extract_finished = extract_psarc_file(TEMP_DOWNLOAD_NAME, "ux0:app/NEOVITADB", false);
+			else // ZIP
+				extract_finished = extract_zip_file(TEMP_DOWNLOAD_NAME, "ux0:app/NEOVITADB", false, false);
 			sceIoRemove(TEMP_DOWNLOAD_NAME);
-			SceUID f = sceIoOpen("ux0:app/NEOVITADB/hash.vdb", SCE_O_WRONLY | SCE_O_CREAT | SCE_O_TRUNC, 0777);
-			sceIoWrite(f, to_download->hash, 32);
-			sceIoClose(f);
-			sceAppMgrLoadExec("app0:eboot.bin", NULL, NULL);
+			if (!extract_finished) {
+				init_msg_dialog("The update could not be installed. Please try again later.");
+				while (sceMsgDialogGetStatus() != SCE_COMMON_DIALOG_STATUS_FINISHED) {
+					vglSwapBuffers(GL_TRUE);
+				}
+				sceMsgDialogTerm();
+			} else {
+				SceUID f = sceIoOpen("ux0:app/NEOVITADB/hash.vdb", SCE_O_WRONLY | SCE_O_CREAT | SCE_O_TRUNC, 0777);
+				sceIoWrite(f, to_download->hash, 32);
+				sceIoClose(f);
+				sceAppMgrLoadExec("app0:eboot.bin", NULL, NULL);
+			}
 		}
 	} else {
 		init_msg_dialog("This homebrew is already up to date.");
